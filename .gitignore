@@ -1,0 +1,11 @@
+# Binary
+zion
+
+# bpf2go generated files
+*_bpfel.go
+*_bpfeb.go
+*_bpfel.o
+*_bpfeb.o
+
+# Generated kernel header (large, machine-specific)
+headers/vmlinux.h
