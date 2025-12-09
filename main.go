@@ -10,6 +10,8 @@ import (
 
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/rlimit"
+
+	"github.com/aniket/zion/telemetry"
 )
 
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -strip llvm-strip zion ebpf/zion_loader.c -- -Iheaders -O2 -g -target bpf
@@ -32,23 +34,33 @@ func main() {
 	}
 	defer objs.Close()
 
-	// ── Attach tracepoint: raw_syscalls/sys_enter ───────────────────────
-	tp, err := link.Tracepoint("raw_syscalls", "sys_enter", objs.ZionProbe, nil)
+	// ── PR #1: Attach tracepoint — raw_syscalls/sys_enter ───────────────
+	tp1, err := link.Tracepoint("raw_syscalls", "sys_enter", objs.ZionProbe, nil)
 	if err != nil {
-		log.Fatalf("[ZION] Failed to attach tracepoint: %v", err)
+		log.Fatalf("[ZION] Failed to attach syscall tracepoint: %v", err)
 	}
-	defer tp.Close()
+	defer tp1.Close()
+
+	// ── PR #2: Attach tracepoint — sched/sched_process_exec ─────────────
+	tp2, err := link.Tracepoint("sched", "sched_process_exec", objs.TraceExec, nil)
+	if err != nil {
+		log.Fatalf("[ZION] Failed to attach exec tracepoint: %v", err)
+	}
+	defer tp2.Close()
 
 	fmt.Println("╔══════════════════════════════════════╗")
 	fmt.Println("║     ZION Kernel Probe Active         ║")
 	fmt.Println("╚══════════════════════════════════════╝")
-	fmt.Println("Press Ctrl+C to detach and exit.")
+	fmt.Println("Monitoring process executions... Press Ctrl+C to exit.")
 
-	// ── Background: read the syscall counter every 2s ───────────────────
+	// ── Start the exec event logger (runs in background goroutine) ──────
+	go telemetry.StartExecLogger(objs.ExecEvents)
+
+	// ── Background: read the syscall counter every 5s ───────────────────
 	go func() {
 		var key uint32
 		for {
-			time.Sleep(2 * time.Second)
+			time.Sleep(5 * time.Second)
 			var count uint64
 			if err := objs.ZionStatus.Lookup(key, &count); err != nil {
 				log.Printf("[ZION] Map read error: %v", err)
