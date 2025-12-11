@@ -11,6 +11,7 @@ import (
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/rlimit"
 
+	"github.com/aniket/zion/detection"
 	"github.com/aniket/zion/telemetry"
 )
 
@@ -48,13 +49,21 @@ func main() {
 	}
 	defer tp2.Close()
 
+	// ── PR #3: Attach tracepoint — syscalls/sys_enter_ptrace ────────────
+	tp3, err := link.Tracepoint("syscalls", "sys_enter_ptrace", objs.TracePtrace, nil)
+	if err != nil {
+		log.Fatalf("[ZION] Failed to attach ptrace tracepoint: %v", err)
+	}
+	defer tp3.Close()
+
 	fmt.Println("╔══════════════════════════════════════╗")
 	fmt.Println("║     ZION Kernel Probe Active         ║")
 	fmt.Println("╚══════════════════════════════════════╝")
 	fmt.Println("Monitoring process executions... Press Ctrl+C to exit.")
 
-	// ── Start the exec event logger (runs in background goroutine) ──────
+	// ── Start telemetry & detection goroutines ──────────────────────────
 	go telemetry.StartExecLogger(objs.ExecEvents)
+	go detection.StartInjectionDetector(objs.PtraceEvents)
 
 	// ── Background: read the syscall counter every 5s ───────────────────
 	go func() {

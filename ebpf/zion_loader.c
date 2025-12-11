@@ -77,4 +77,62 @@ int trace_exec(void *ctx) {
     return 0;
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// PR #3 — Anti-Evasion & Injection Detection (sys_ptrace)
+// ═══════════════════════════════════════════════════════════════════════
+
+#define PTRACE_ATTACH 16
+#define PTRACE_SEIZE  0x4206
+
+// Context struct for tracepoint/syscalls/sys_enter_ptrace
+struct sys_enter_ptrace_args {
+    __u64 pad;              // common trace event header
+    __s32 __syscall_nr;
+    __u32 pad2;
+    __s64 request;          // PTRACE_ATTACH, PTRACE_SEIZE, etc.
+    __s64 pid;              // target PID
+};
+
+// Event struct sent to Go userspace.
+struct ptrace_event {
+    __u32 attacker_pid;
+    __u32 target_pid;
+    __u32 attacker_uid;
+    __u32 request;
+    __u8  attacker_comm[TASK_COMM_LEN];
+};
+
+// Ring buffer for ptrace alerts.
+struct {
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 1 << 20); // 1 MB
+} ptrace_events SEC(".maps");
+
+SEC("tracepoint/syscalls/sys_enter_ptrace")
+int trace_ptrace(struct sys_enter_ptrace_args *ctx) {
+    // Only care about PTRACE_ATTACH and PTRACE_SEIZE
+    __s64 req = ctx->request;
+    if (req != PTRACE_ATTACH && req != PTRACE_SEIZE) {
+        return 0;
+    }
+
+    struct ptrace_event *evt = bpf_ringbuf_reserve(&ptrace_events, sizeof(*evt), 0);
+    if (!evt) {
+        return 0;
+    }
+
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    evt->attacker_pid = (__u32)(pid_tgid >> 32);
+    evt->target_pid   = (__u32)ctx->pid;
+    evt->request      = (__u32)req;
+
+    __u64 uid_gid = bpf_get_current_uid_gid();
+    evt->attacker_uid = (__u32)uid_gid;
+
+    bpf_get_current_comm(&evt->attacker_comm, sizeof(evt->attacker_comm));
+
+    bpf_ringbuf_submit(evt, 0);
+    return 0;
+}
+
 char LICENSE[] SEC("license") = "GPL";
