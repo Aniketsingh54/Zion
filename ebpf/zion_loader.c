@@ -135,4 +135,61 @@ int trace_ptrace(struct sys_enter_ptrace_args *ctx) {
     return 0;
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// PR #4 — Privilege Escalation Hunter (setuid monitoring)
+// ═══════════════════════════════════════════════════════════════════════
+
+// Context struct for tracepoint/syscalls/sys_enter_setuid
+struct sys_enter_setuid_args {
+    __u64 pad;          // common trace header
+    __s32 __syscall_nr;
+    __u32 pad2;
+    __u64 uid;          // desired new UID
+};
+
+// Event struct for privilege transitions.
+struct priv_event {
+    __u32 pid;
+    __u32 old_uid;
+    __u32 new_uid;
+    __u32 pad;
+    __u8  comm[TASK_COMM_LEN];
+};
+
+// Ring buffer for privilege escalation events.
+struct {
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 1 << 20); // 1 MB
+} priv_events SEC(".maps");
+
+SEC("tracepoint/syscalls/sys_enter_setuid")
+int trace_setuid(struct sys_enter_setuid_args *ctx) {
+    __u32 new_uid = (__u32)ctx->uid;
+
+    // Get the current (old) UID
+    __u64 uid_gid = bpf_get_current_uid_gid();
+    __u32 old_uid = (__u32)uid_gid;
+
+    // Only care about transitions TO root (new_uid == 0)
+    // and FROM non-root (old_uid != 0)
+    if (new_uid != 0 || old_uid == 0) {
+        return 0;
+    }
+
+    struct priv_event *evt = bpf_ringbuf_reserve(&priv_events, sizeof(*evt), 0);
+    if (!evt) {
+        return 0;
+    }
+
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    evt->pid     = (__u32)(pid_tgid >> 32);
+    evt->old_uid = old_uid;
+    evt->new_uid = new_uid;
+    evt->pad     = 0;
+    bpf_get_current_comm(&evt->comm, sizeof(evt->comm));
+
+    bpf_ringbuf_submit(evt, 0);
+    return 0;
+}
+
 char LICENSE[] SEC("license") = "GPL";

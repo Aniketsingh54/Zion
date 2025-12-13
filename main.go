@@ -56,6 +56,13 @@ func main() {
 	}
 	defer tp3.Close()
 
+	// ── PR #4: Attach tracepoint — syscalls/sys_enter_setuid ────────────
+	tp4, err := link.Tracepoint("syscalls", "sys_enter_setuid", objs.TraceSetuid, nil)
+	if err != nil {
+		log.Fatalf("[ZION] Failed to attach setuid tracepoint: %v", err)
+	}
+	defer tp4.Close()
+
 	fmt.Println("╔══════════════════════════════════════╗")
 	fmt.Println("║     ZION Kernel Probe Active         ║")
 	fmt.Println("╚══════════════════════════════════════╝")
@@ -64,6 +71,7 @@ func main() {
 	// ── Start telemetry & detection goroutines ──────────────────────────
 	go telemetry.StartExecLogger(objs.ExecEvents)
 	go detection.StartInjectionDetector(objs.PtraceEvents)
+	go detection.StartPrivilegeDetector(objs.PrivEvents)
 
 	// ── Background: read the syscall counter every 5s ───────────────────
 	go func() {
