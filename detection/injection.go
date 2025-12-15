@@ -10,6 +10,8 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/ringbuf"
+
+	"github.com/aniket/zion/response"
 )
 
 const (
@@ -113,6 +115,15 @@ func StartInjectionDetector(m *ebpf.Map) {
 			fmt.Printf("║  Action:   %-15s                               ║\n",
 				evt.RequestName())
 			fmt.Println("╚═══════════════════════════════════════════════════════════╝")
+
+			// AUTO-RESPONSE: dispatch kill order
+			go response.Dispatch(response.KillOrder{
+				PID:     evt.AttackerPID,
+				Comm:    evt.CommString(),
+				Action:  "kill",
+				Capture: true,
+				Reason:  "Process injection via " + evt.RequestName(),
+			})
 		}
 	}
 }

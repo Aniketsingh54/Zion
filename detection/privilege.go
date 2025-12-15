@@ -8,6 +8,8 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/ringbuf"
+
+	"github.com/aniket/zion/response"
 )
 
 // PrivEvent mirrors the kernel-side struct priv_event.
@@ -81,6 +83,15 @@ func StartPrivilegeDetector(m *ebpf.Map) {
 				evt.OldUID, evt.NewUID)
 			fmt.Println("║  Status:   UNAUTHORIZED ELEVATION                        ║")
 			fmt.Println("╚═══════════════════════════════════════════════════════════╝")
+
+			// AUTO-RESPONSE: dispatch kill order
+			go response.Dispatch(response.KillOrder{
+				PID:     evt.PID,
+				Comm:    comm,
+				Action:  "kill",
+				Capture: true,
+				Reason:  fmt.Sprintf("Unauthorized setuid %d → %d", evt.OldUID, evt.NewUID),
+			})
 		}
 	}
 }
