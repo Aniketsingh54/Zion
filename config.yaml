@@ -1,0 +1,53 @@
+# ─────────────────────────────────────────────────────────
+# Zion Configuration
+# ─────────────────────────────────────────────────────────
+
+# Processes to ignore in exec telemetry (shell prompt noise, IDE, etc.)
+whitelist:
+  exec:
+    # Shell prompt / powerline
+    - ip
+    - cut
+    - head
+    - hostname
+    - uname
+    - sed
+    - awk
+    - grep
+    - tr
+    - wc
+    - tput
+    - dircolors
+    - sh
+    - cat
+    - sleep
+    # Status bar
+    - which
+    - ps
+    - cpuUsage.sh
+    # IDE / tooling
+    - git
+    - getent
+    - code
+    - node
+    - gopls
+
+  # Binaries allowed to escalate to root via setuid(0)
+  escalation:
+    - sudo
+    - su
+    - pkexec
+    - doas
+    - login
+    - sshd
+    - cron
+    - polkitd
+    - newgrp
+    - unix_chkpwd
+
+# Response settings
+response:
+  auto_kill: true           # Automatically kill CRITICAL threats
+  capture_traffic: true     # Capture pcap on threat detection
+  capture_duration: 60      # Seconds of traffic to capture
+  enforcer_socket: /tmp/zion_enforcer.sock
