@@ -8,6 +8,9 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/ringbuf"
+
+	"github.com/aniket/zion/config"
+	"github.com/aniket/zion/logger"
 )
 
 // ExecEvent mirrors the kernel-side struct exec_event.
@@ -29,22 +32,9 @@ func (e *ExecEvent) CommString() string {
 	return string(e.Comm[:n])
 }
 
-// Noisy processes spawned by shell prompts and status bars — filter out.
-var ignoreComms = map[string]bool{
-	// Shell prompt (zsh/powerline)
-	"ip": true, "cut": true, "head": true, "hostname": true,
-	"uname": true, "sed": true, "awk": true, "grep": true,
-	"tr": true, "wc": true, "tput": true, "dircolors": true,
-	"sh": true, "cat": true, "sleep": true,
-	// Status bar / system monitors
-	"which": true, "ps": true, "cpuUsage.sh": true,
-	// IDE / tooling background
-	"git": true, "getent": true,
-}
-
 // StartExecLogger opens a RingBuffer reader on the given map and logs
 // every process execution event. Blocks forever — run in a goroutine.
-func StartExecLogger(m *ebpf.Map) {
+func StartExecLogger(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Logger) {
 	rd, err := ringbuf.NewReader(m)
 	if err != nil {
 		log.Fatalf("[ZION] Failed to open ring buffer reader: %v", err)
@@ -65,11 +55,28 @@ func StartExecLogger(m *ebpf.Map) {
 		}
 
 		comm := evt.CommString()
-		if ignoreComms[comm] {
+
+		// Log to JSON file regardless of whitelist (for forensic completeness)
+		severity := logger.SeverityInfo
+		if cfg.IsExecWhitelisted(comm) {
+			severity = logger.SeverityDebug
+		}
+
+		eventLog.Log(logger.Event{
+			EventType: logger.EventExec,
+			Severity:  severity,
+			PID:       evt.PID,
+			PPID:      evt.PPID,
+			UID:       evt.UID,
+			Comm:      comm,
+		})
+
+		// Skip console output for whitelisted processes (unless verbose)
+		if cfg.IsExecWhitelisted(comm) && !cfg.Verbose {
 			continue
 		}
 
-		fmt.Printf("[ZION] Process Started: %s (PID: %d, PPID: %d, UID: %d)\n",
-			comm, evt.PID, evt.PPID, evt.UID)
+		fmt.Printf("[%s] [ZION] Process Started: %s (PID: %d, PPID: %d, UID: %d)\n",
+			logger.Timestamp(), comm, evt.PID, evt.PPID, evt.UID)
 	}
 }

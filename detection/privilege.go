@@ -9,6 +9,8 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/ringbuf"
 
+	"github.com/aniket/zion/config"
+	"github.com/aniket/zion/logger"
 	"github.com/aniket/zion/response"
 )
 
@@ -29,23 +31,9 @@ func (e *PrivEvent) CommString() string {
 	return string(e.Comm[:n])
 }
 
-// Legitimate binaries that are expected to escalate to root.
-var allowedEscalators = map[string]bool{
-	"sudo":        true,
-	"su":          true,
-	"pkexec":      true,
-	"doas":        true,
-	"login":       true,
-	"sshd":        true,
-	"cron":        true,
-	"polkitd":     true,
-	"newgrp":      true,
-	"unix_chkpwd": true,
-}
-
 // StartPrivilegeDetector reads setuid events and flags unexpected
 // privilege escalation to root. Blocks forever — run in a goroutine.
-func StartPrivilegeDetector(m *ebpf.Map) {
+func StartPrivilegeDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Logger) {
 	rd, err := ringbuf.NewReader(m)
 	if err != nil {
 		log.Fatalf("[ZION] Failed to open privilege ring buffer: %v", err)
@@ -66,17 +54,46 @@ func StartPrivilegeDetector(m *ebpf.Map) {
 		}
 
 		comm := evt.CommString()
+		ts := logger.Timestamp()
 
-		if allowedEscalators[comm] {
+		if cfg.IsEscalationAllowed(comm) {
 			// Expected escalation — log as INFO
-			fmt.Printf("[ZION] INFO: Expected privilege transition: %s (PID: %d) UID %d → %d\n",
-				comm, evt.PID, evt.OldUID, evt.NewUID)
+			eventLog.Log(logger.Event{
+				EventType: logger.EventPrivEsc,
+				Severity:  logger.SeverityInfo,
+				PID:       evt.PID,
+				UID:       evt.OldUID,
+				Comm:      comm,
+				Details: map[string]string{
+					"old_uid": fmt.Sprintf("%d", evt.OldUID),
+					"new_uid": fmt.Sprintf("%d", evt.NewUID),
+					"verdict": "expected_escalation",
+				},
+			})
+
+			fmt.Printf("[%s] [ZION] INFO: Expected privilege transition: %s (PID: %d) UID %d → %d\n",
+				ts, comm, evt.PID, evt.OldUID, evt.NewUID)
+
 		} else {
 			// Unexpected escalation — CRITICAL ALERT
+			eventLog.Log(logger.Event{
+				EventType: logger.EventPrivEsc,
+				Severity:  logger.SeverityCritical,
+				PID:       evt.PID,
+				UID:       evt.OldUID,
+				Comm:      comm,
+				Details: map[string]string{
+					"old_uid": fmt.Sprintf("%d", evt.OldUID),
+					"new_uid": fmt.Sprintf("%d", evt.NewUID),
+					"verdict": "CRITICAL_unauthorized",
+				},
+			})
+
 			fmt.Println()
 			fmt.Println("╔═══════════════════════════════════════════════════════════╗")
 			fmt.Println("║  🔴 CRITICAL: PRIVILEGE ESCALATION DETECTED (T1068)      ║")
 			fmt.Println("╠═══════════════════════════════════════════════════════════╣")
+			fmt.Printf("║  Time:     %-46s║\n", ts)
 			fmt.Printf("║  Binary:   %-15s (PID: %-6d)                 ║\n",
 				comm, evt.PID)
 			fmt.Printf("║  UID:      %d → %d (ROOT)                                ║\n",
@@ -84,14 +101,32 @@ func StartPrivilegeDetector(m *ebpf.Map) {
 			fmt.Println("║  Status:   UNAUTHORIZED ELEVATION                        ║")
 			fmt.Println("╚═══════════════════════════════════════════════════════════╝")
 
-			// AUTO-RESPONSE: dispatch kill order
-			go response.Dispatch(response.KillOrder{
-				PID:     evt.PID,
-				Comm:    comm,
-				Action:  "kill",
-				Capture: true,
-				Reason:  fmt.Sprintf("Unauthorized setuid %d → %d", evt.OldUID, evt.NewUID),
-			})
+			// AUTO-RESPONSE: dispatch kill order (unless dry-run)
+			if cfg.ShouldAutoKill() {
+				eventLog.Log(logger.Event{
+					EventType: logger.EventResponse,
+					Severity:  logger.SeverityCritical,
+					PID:       evt.PID,
+					UID:       evt.OldUID,
+					Comm:      comm,
+					Details: map[string]string{
+						"action": "kill_dispatched",
+						"reason": fmt.Sprintf("Unauthorized setuid %d → %d", evt.OldUID, evt.NewUID),
+					},
+				})
+
+				go response.Dispatch(response.KillOrder{
+					PID:        evt.PID,
+					Comm:       comm,
+					Action:     "kill",
+					Capture:    cfg.Response.CaptureTraffic,
+					Reason:     fmt.Sprintf("Unauthorized setuid %d → %d", evt.OldUID, evt.NewUID),
+					SocketPath: cfg.SocketPath(),
+				})
+			} else {
+				fmt.Printf("[%s] [ZION] ⏸️  Dry-run: kill suppressed for PID %d (%s)\n",
+					ts, evt.PID, comm)
+			}
 		}
 	}
 }

@@ -11,6 +11,8 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/ringbuf"
 
+	"github.com/aniket/zion/config"
+	"github.com/aniket/zion/logger"
 	"github.com/aniket/zion/response"
 )
 
@@ -66,7 +68,7 @@ func getParentPID(pid uint32) (uint32, error) {
 // StartInjectionDetector reads ptrace events and applies the detection policy.
 // Policy: IF (attacker != parent of target) AND (attacker UID != 0) → CRITICAL
 // Blocks forever — run in a goroutine.
-func StartInjectionDetector(m *ebpf.Map) {
+func StartInjectionDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Logger) {
 	rd, err := ringbuf.NewReader(m)
 	if err != nil {
 		log.Fatalf("[ZION] Failed to open ptrace ring buffer: %v", err)
@@ -94,20 +96,64 @@ func StartInjectionDetector(m *ebpf.Map) {
 			isParent = (evt.AttackerPID == ppid)
 		}
 
+		ts := logger.Timestamp()
+
 		if isRoot {
 			// Root ptrace — log as INFO, not an alert
-			fmt.Printf("\n[ZION] INFO: Root ptrace — %s (PID: %d) → Target PID: %d [%s]\n",
-				evt.CommString(), evt.AttackerPID, evt.TargetPID, evt.RequestName())
+			eventLog.Log(logger.Event{
+				EventType: logger.EventInjection,
+				Severity:  logger.SeverityInfo,
+				PID:       evt.AttackerPID,
+				UID:       evt.AttackerUID,
+				Comm:      evt.CommString(),
+				Details: map[string]string{
+					"target_pid": fmt.Sprintf("%d", evt.TargetPID),
+					"request":    evt.RequestName(),
+					"verdict":    "root_ptrace",
+				},
+			})
+
+			fmt.Printf("\n[%s] [ZION] INFO: Root ptrace — %s (PID: %d) → Target PID: %d [%s]\n",
+				ts, evt.CommString(), evt.AttackerPID, evt.TargetPID, evt.RequestName())
+
 		} else if isParent {
 			// Parent debugging child — probably a debugger
-			fmt.Printf("\n[ZION] WARN: Debug attach — %s (PID: %d) → Child PID: %d [%s]\n",
-				evt.CommString(), evt.AttackerPID, evt.TargetPID, evt.RequestName())
+			eventLog.Log(logger.Event{
+				EventType: logger.EventInjection,
+				Severity:  logger.SeverityWarn,
+				PID:       evt.AttackerPID,
+				UID:       evt.AttackerUID,
+				Comm:      evt.CommString(),
+				Details: map[string]string{
+					"target_pid": fmt.Sprintf("%d", evt.TargetPID),
+					"request":    evt.RequestName(),
+					"verdict":    "parent_debug",
+				},
+			})
+
+			fmt.Printf("\n[%s] [ZION] WARN: Debug attach — %s (PID: %d) → Child PID: %d [%s]\n",
+				ts, evt.CommString(), evt.AttackerPID, evt.TargetPID, evt.RequestName())
+
 		} else {
 			// Non-parent, non-root → CRITICAL INJECTION
+			eventLog.Log(logger.Event{
+				EventType: logger.EventInjection,
+				Severity:  logger.SeverityCritical,
+				PID:       evt.AttackerPID,
+				UID:       evt.AttackerUID,
+				Comm:      evt.CommString(),
+				Details: map[string]string{
+					"target_pid": fmt.Sprintf("%d", evt.TargetPID),
+					"request":    evt.RequestName(),
+					"verdict":    "CRITICAL_injection",
+				},
+			})
+
 			fmt.Println()
 			fmt.Println("╔═══════════════════════════════════════════════════════════╗")
 			fmt.Println("║  ⚠️  CRITICAL: PROCESS INJECTION DETECTED                ║")
 			fmt.Println("╠═══════════════════════════════════════════════════════════╣")
+			fmt.Printf("║  Time:     %-46s║\n", ts)
 			fmt.Printf("║  Attacker: %-15s (PID: %-6d, UID: %-5d)   ║\n",
 				evt.CommString(), evt.AttackerPID, evt.AttackerUID)
 			fmt.Printf("║  Target:   PID %-6d                                    ║\n",
@@ -116,14 +162,32 @@ func StartInjectionDetector(m *ebpf.Map) {
 				evt.RequestName())
 			fmt.Println("╚═══════════════════════════════════════════════════════════╝")
 
-			// AUTO-RESPONSE: dispatch kill order
-			go response.Dispatch(response.KillOrder{
-				PID:     evt.AttackerPID,
-				Comm:    evt.CommString(),
-				Action:  "kill",
-				Capture: true,
-				Reason:  "Process injection via " + evt.RequestName(),
-			})
+			// AUTO-RESPONSE: dispatch kill order (unless dry-run)
+			if cfg.ShouldAutoKill() {
+				eventLog.Log(logger.Event{
+					EventType: logger.EventResponse,
+					Severity:  logger.SeverityCritical,
+					PID:       evt.AttackerPID,
+					UID:       evt.AttackerUID,
+					Comm:      evt.CommString(),
+					Details: map[string]string{
+						"action": "kill_dispatched",
+						"reason": "Process injection via " + evt.RequestName(),
+					},
+				})
+
+				go response.Dispatch(response.KillOrder{
+					PID:        evt.AttackerPID,
+					Comm:       evt.CommString(),
+					Action:     "kill",
+					Capture:    cfg.Response.CaptureTraffic,
+					Reason:     "Process injection via " + evt.RequestName(),
+					SocketPath: cfg.SocketPath(),
+				})
+			} else {
+				fmt.Printf("[%s] [ZION] ⏸️  Dry-run: kill suppressed for PID %d (%s)\n",
+					ts, evt.AttackerPID, evt.CommString())
+			}
 		}
 	}
 }

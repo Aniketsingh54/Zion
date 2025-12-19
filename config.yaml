@@ -51,3 +51,12 @@ response:
   capture_traffic: true     # Capture pcap on threat detection
   capture_duration: 60      # Seconds of traffic to capture
   enforcer_socket: /tmp/zion_enforcer.sock
+
+# JSON event logging (for forensic review / SIEM ingestion)
+logging:
+  enabled: true
+  directory: ./logs
+  format: jsonl             # JSONL — one JSON object per line
+
+# Show all exec events (including whitelisted) on console
+verbose: false

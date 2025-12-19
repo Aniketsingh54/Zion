@@ -9,19 +9,18 @@ import (
 	"time"
 )
 
-const socketPath = "/tmp/zion_enforcer.sock"
-
 // KillOrder is the JSON payload sent to the Python enforcer.
 type KillOrder struct {
-	PID     uint32 `json:"pid"`
-	Comm    string `json:"comm"`
-	Action  string `json:"action"`
-	Capture bool   `json:"capture"`
-	Reason  string `json:"reason"`
+	PID        uint32 `json:"pid"`
+	Comm       string `json:"comm"`
+	Action     string `json:"action"`
+	Capture    bool   `json:"capture"`
+	Reason     string `json:"reason"`
+	SocketPath string `json:"-"` // Not serialized — used internally to find enforcer
 }
 
 // enforcerAvailable checks if the Python enforcer is listening.
-func enforcerAvailable() bool {
+func enforcerAvailable(socketPath string) bool {
 	_, err := os.Stat(socketPath)
 	return err == nil
 }
@@ -29,7 +28,12 @@ func enforcerAvailable() bool {
 // Dispatch sends a kill order to the Python enforcer via Unix socket.
 // If the enforcer is not running, it falls back to a direct SIGKILL.
 func Dispatch(order KillOrder) {
-	if !enforcerAvailable() {
+	socketPath := order.SocketPath
+	if socketPath == "" {
+		socketPath = "/tmp/zion_enforcer.sock"
+	}
+
+	if !enforcerAvailable(socketPath) {
 		// Fallback: kill directly from Go if enforcer isn't running
 		log.Printf("[DISPATCH] Enforcer not available, direct kill PID %d", order.PID)
 		directKill(order.PID, order.Comm)
