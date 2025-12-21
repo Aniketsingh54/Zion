@@ -45,6 +45,32 @@ whitelist:
     - newgrp
     - unix_chkpwd
 
+  # Processes allowed to read /etc/shadow, /etc/gshadow
+  credential_readers:
+    - sshd
+    - login
+    - passwd
+    - chpasswd
+    - unix_chkpwd
+    - su
+    - sudo
+
+  # Processes allowed to write to /var/log/
+  log_writers:
+    - logrotate
+    - rsyslogd
+    - rsyslog
+    - systemd-journald
+    - syslog-ng
+
+  # Processes allowed to modify crontab / shell profiles
+  persistence_writers:
+    - cron
+    - anacron
+    - vim
+    - nano
+    - vi
+
 # Response settings
 response:
   auto_kill: true           # Automatically kill CRITICAL threats

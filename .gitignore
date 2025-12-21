@@ -9,3 +9,7 @@ zion
 
 # Generated kernel header (large, machine-specific)
 headers/vmlinux.h
+
+# Runtime output
+logs/
+captures/

@@ -66,6 +66,13 @@ func main() {
 	}
 	defer objs.Close()
 
+	// ── Write Zion's PID into the eBPF map (for self-defense) ───────────
+	var pidKey uint32
+	zionPID := uint32(os.Getpid())
+	if err := objs.ZionPid.Update(pidKey, zionPID, 0); err != nil {
+		log.Printf("[ZION] WARN: Failed to set self-defense PID: %v", err)
+	}
+
 	// ── Attach tracepoint — raw_syscalls/sys_enter ──────────────────────
 	tp1, err := link.Tracepoint("raw_syscalls", "sys_enter", objs.ZionProbe, nil)
 	if err != nil {
@@ -94,25 +101,79 @@ func main() {
 	}
 	defer tp4.Close()
 
+	// ── Attach tracepoint — syscalls/sys_enter_openat ───────────────────
+	tp5, err := link.Tracepoint("syscalls", "sys_enter_openat", objs.TraceOpenat, nil)
+	if err != nil {
+		log.Fatalf("[ZION] Failed to attach openat tracepoint: %v", err)
+	}
+	defer tp5.Close()
+
+	// ── Attach tracepoint — syscalls/sys_enter_connect ──────────────────
+	tp6, err := link.Tracepoint("syscalls", "sys_enter_connect", objs.TraceConnect, nil)
+	if err != nil {
+		log.Fatalf("[ZION] Failed to attach connect tracepoint: %v", err)
+	}
+	defer tp6.Close()
+
+	// ── Attach tracepoint — syscalls/sys_enter_memfd_create ─────────────
+	tp7, err := link.Tracepoint("syscalls", "sys_enter_memfd_create", objs.TraceMemfdCreate, nil)
+	if err != nil {
+		log.Fatalf("[ZION] Failed to attach memfd_create tracepoint: %v", err)
+	}
+	defer tp7.Close()
+
+	// ── Attach tracepoint — syscalls/sys_enter_dup2 ─────────────────────
+	tp8, err := link.Tracepoint("syscalls", "sys_enter_dup2", objs.TraceDup2, nil)
+	if err != nil {
+		log.Fatalf("[ZION] Failed to attach dup2 tracepoint: %v", err)
+	}
+	defer tp8.Close()
+
+	// ── Attach tracepoint — syscalls/sys_enter_kill ─────────────────────
+	tp9, err := link.Tracepoint("syscalls", "sys_enter_kill", objs.TraceKill, nil)
+	if err != nil {
+		log.Fatalf("[ZION] Failed to attach kill tracepoint: %v", err)
+	}
+	defer tp9.Close()
+
 	// ── Banner ──────────────────────────────────────────────────────────
-	fmt.Println("╔══════════════════════════════════════╗")
-	fmt.Println("║     ZION Kernel Probe Active         ║")
-	fmt.Println("╚══════════════════════════════════════╝")
+	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
+	fmt.Println("║              ⚡ ZION Kernel Probe Active                    ║")
+	fmt.Println("║          Behavioral Detection & Response Engine              ║")
+	fmt.Println("╠══════════════════════════════════════════════════════════════╣")
+	fmt.Println("║  Probes:  9 active tracepoints                              ║")
+	fmt.Println("║  Detect:  8 attack vectors (MITRE ATT&CK mapped)            ║")
+	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
 	if merged.NoKill {
 		fmt.Println("⚙️  Mode: DRY-RUN (detection only, no auto-kill)")
 	} else {
 		fmt.Println("⚙️  Mode: ARMED (auto-kill enabled)")
 	}
 	fmt.Printf("⚙️  Config: %s\n", *configPath)
-	fmt.Printf("⚙️  Whitelisted commands: %d exec, %d escalation\n",
-		len(merged.Whitelist.Exec), len(merged.Whitelist.Escalation))
-	fmt.Println("Monitoring process executions... Press Ctrl+C to exit.")
+	fmt.Printf("⚙️  Self-defense PID: %d\n", zionPID)
+	fmt.Println()
+	fmt.Println("  Detection Coverage:")
+	fmt.Println("  ├── T1055  Process Injection (ptrace)")
+	fmt.Println("  ├── T1068  Privilege Escalation (setuid)")
+	fmt.Println("  ├── T1059  Reverse Shell (connect + dup2)")
+	fmt.Println("  ├── T1003  Credential Access (file reads)")
+	fmt.Println("  ├── T1070  Defense Evasion (log tampering)")
+	fmt.Println("  ├── T1053  Persistence (crontab/bashrc)")
+	fmt.Println("  ├── T1620  Fileless Execution (memfd_create)")
+	fmt.Println("  └── T1562  Sensor Tampering (kill protection)")
+	fmt.Println()
+	fmt.Println("Monitoring... Press Ctrl+C to exit.")
 	fmt.Println()
 
 	// ── Start telemetry & detection goroutines ──────────────────────────
 	go telemetry.StartExecLogger(objs.ExecEvents, merged, eventLog)
 	go detection.StartInjectionDetector(objs.PtraceEvents, merged, eventLog)
 	go detection.StartPrivilegeDetector(objs.PrivEvents, merged, eventLog)
+	go detection.StartFileMonitor(objs.FileEvents, merged, eventLog)
+	go detection.StartReverseShellDetector(objs.ConnectEvents, merged, eventLog)
+	go detection.StartFilelessDetector(objs.MemfdEvents, merged, eventLog)
+	go detection.StartDup2Detector(objs.Dup2Events, merged, eventLog)
+	go detection.StartSelfDefenseDetector(objs.KillEvents, merged, eventLog)
 
 	// ── Background: read the syscall counter every 5s ───────────────────
 	go func() {

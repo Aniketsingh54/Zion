@@ -10,6 +10,7 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 
 	"github.com/aniket/zion/config"
+	"github.com/aniket/zion/detection"
 	"github.com/aniket/zion/logger"
 )
 
@@ -70,6 +71,33 @@ func StartExecLogger(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Logger) {
 			UID:       evt.UID,
 			Comm:      comm,
 		})
+
+		// ── Reverse shell detection via exec pattern matching ────────
+		if detection.IsReverseShellComm(comm) {
+			eventLog.Log(logger.Event{
+				EventType: logger.EventInjection,
+				Severity:  logger.SeverityCritical,
+				PID:       evt.PID,
+				PPID:      evt.PPID,
+				UID:       evt.UID,
+				Comm:      comm,
+				Details: map[string]string{
+					"detection_type": "REVERSE_SHELL_TOOL",
+					"mitre":          "T1059.004",
+				},
+			})
+
+			ts := logger.Timestamp()
+			fmt.Println()
+			fmt.Println("╔═══════════════════════════════════════════════════════════╗")
+			fmt.Println("║  🔴 WARN: OFFENSIVE TOOL EXECUTED (T1059.004)            ║")
+			fmt.Println("╠═══════════════════════════════════════════════════════════╣")
+			fmt.Printf("║  Time:     %-46s║\n", ts)
+			fmt.Printf("║  Binary:   %-15s (PID: %-6d, UID: %-5d)   ║\n",
+				comm, evt.PID, evt.UID)
+			fmt.Println("║  Status:   KNOWN REVERSE SHELL / ATTACK TOOL             ║")
+			fmt.Println("╚═══════════════════════════════════════════════════════════╝")
+		}
 
 		// Skip console output for whitelisted processes (unless verbose)
 		if cfg.IsExecWhitelisted(comm) && !cfg.Verbose {

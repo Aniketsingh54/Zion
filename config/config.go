@@ -15,10 +15,13 @@ type Config struct {
 	Verbose   bool            `yaml:"verbose"`
 }
 
-// WhitelistConfig holds process whitelists.
+// WhitelistConfig holds process whitelists for all detection categories.
 type WhitelistConfig struct {
-	Exec       []string `yaml:"exec"`
-	Escalation []string `yaml:"escalation"`
+	Exec               []string `yaml:"exec"`
+	Escalation         []string `yaml:"escalation"`
+	CredentialReaders  []string `yaml:"credential_readers"`
+	LogWriters         []string `yaml:"log_writers"`
+	PersistenceWriters []string `yaml:"persistence_writers"`
 }
 
 // ResponseConfig holds automated response settings.
@@ -51,8 +54,11 @@ type Merged struct {
 	Stats  bool
 
 	// Internal lookup maps (built once at startup)
-	execWhitelist     map[string]bool
-	escalationAllowed map[string]bool
+	execWhitelist      map[string]bool
+	escalationAllowed  map[string]bool
+	credentialReaders  map[string]bool
+	logWriters         map[string]bool
+	persistenceWriters map[string]bool
 }
 
 // Load reads and parses a YAML config file.
@@ -104,16 +110,20 @@ func Merge(cfg *Config, overrides RuntimeOverrides) *Merged {
 	}
 
 	// Build lookup maps for O(1) checks
-	m.execWhitelist = make(map[string]bool, len(cfg.Whitelist.Exec))
-	for _, comm := range cfg.Whitelist.Exec {
-		m.execWhitelist[comm] = true
-	}
+	m.execWhitelist = buildMap(cfg.Whitelist.Exec)
+	m.escalationAllowed = buildMap(cfg.Whitelist.Escalation)
+	m.credentialReaders = buildMap(cfg.Whitelist.CredentialReaders)
+	m.logWriters = buildMap(cfg.Whitelist.LogWriters)
+	m.persistenceWriters = buildMap(cfg.Whitelist.PersistenceWriters)
 
-	m.escalationAllowed = make(map[string]bool, len(cfg.Whitelist.Escalation))
-	for _, comm := range cfg.Whitelist.Escalation {
-		m.escalationAllowed[comm] = true
-	}
+	return m
+}
 
+func buildMap(items []string) map[string]bool {
+	m := make(map[string]bool, len(items))
+	for _, item := range items {
+		m[item] = true
+	}
 	return m
 }
 
@@ -125,6 +135,21 @@ func (m *Merged) IsExecWhitelisted(comm string) bool {
 // IsEscalationAllowed returns true if the binary is expected to call setuid(0).
 func (m *Merged) IsEscalationAllowed(comm string) bool {
 	return m.escalationAllowed[comm]
+}
+
+// IsCredentialReader returns true if the process is allowed to read /etc/shadow etc.
+func (m *Merged) IsCredentialReader(comm string) bool {
+	return m.credentialReaders[comm]
+}
+
+// IsLogWriter returns true if the process is allowed to modify log files.
+func (m *Merged) IsLogWriter(comm string) bool {
+	return m.logWriters[comm]
+}
+
+// IsPersistenceWriter returns true if the process is allowed to modify crontab/rc files.
+func (m *Merged) IsPersistenceWriter(comm string) bool {
+	return m.persistenceWriters[comm]
 }
 
 // ShouldAutoKill returns true if automated response is enabled.
