@@ -108,12 +108,10 @@ func main() {
 	}
 	defer tp5.Close()
 
-	// ── Attach tracepoint — syscalls/sys_enter_connect ──────────────────
-	tp6, err := link.Tracepoint("syscalls", "sys_enter_connect", objs.TraceConnect, nil)
-	if err != nil {
-		log.Fatalf("[ZION] Failed to attach connect tracepoint: %v", err)
-	}
-	defer tp6.Close()
+	// 6. Connect (Removed)
+	// tp6, err := link.Tracepoint("syscalls", "sys_enter_connect", objs.TraceConnect, nil)
+	// if err != nil { ... }
+	// defer tp6.Close()
 
 	// ── Attach tracepoint — syscalls/sys_enter_memfd_create ─────────────
 	tp7, err := link.Tracepoint("syscalls", "sys_enter_memfd_create", objs.TraceMemfdCreate, nil)
@@ -122,12 +120,10 @@ func main() {
 	}
 	defer tp7.Close()
 
-	// ── Attach tracepoint — syscalls/sys_enter_dup2 ─────────────────────
-	tp8, err := link.Tracepoint("syscalls", "sys_enter_dup2", objs.TraceDup2, nil)
-	if err != nil {
-		log.Fatalf("[ZION] Failed to attach dup2 tracepoint: %v", err)
-	}
-	defer tp8.Close()
+	// 8. Dup2 (Removed)
+	// tp8, err := link.Tracepoint("syscalls", "sys_enter_dup2", objs.TraceDup2, nil)
+	// if err != nil { ... }
+	// defer tp8.Close()
 
 	// ── Attach tracepoint — syscalls/sys_enter_kill ─────────────────────
 	tp9, err := link.Tracepoint("syscalls", "sys_enter_kill", objs.TraceKill, nil)
@@ -141,8 +137,8 @@ func main() {
 	fmt.Println("║              ⚡ ZION Kernel Probe Active                    ║")
 	fmt.Println("║          Behavioral Detection & Response Engine              ║")
 	fmt.Println("╠══════════════════════════════════════════════════════════════╣")
-	fmt.Println("║  Probes:  9 active tracepoints                              ║")
-	fmt.Println("║  Detect:  8 attack vectors (MITRE ATT&CK mapped)            ║")
+	fmt.Println("║  Probes:  7 active tracepoints                              ║")
+	fmt.Println("║  Detect:  6 attack vectors (MITRE ATT&CK mapped)            ║")
 	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
 	if merged.NoKill {
 		fmt.Println("⚙️  Mode: DRY-RUN (detection only, no auto-kill)")
@@ -155,7 +151,7 @@ func main() {
 	fmt.Println("  Detection Coverage:")
 	fmt.Println("  ├── T1055  Process Injection (ptrace)")
 	fmt.Println("  ├── T1068  Privilege Escalation (setuid)")
-	fmt.Println("  ├── T1059  Reverse Shell (connect + dup2)")
+	// fmt.Println("  ├── T1059  Reverse Shell (connect + dup2) [DISABLED]")
 	fmt.Println("  ├── T1003  Credential Access (file reads)")
 	fmt.Println("  ├── T1070  Defense Evasion (log tampering)")
 	fmt.Println("  ├── T1053  Persistence (crontab/bashrc)")
@@ -170,9 +166,10 @@ func main() {
 	go detection.StartInjectionDetector(objs.PtraceEvents, merged, eventLog)
 	go detection.StartPrivilegeDetector(objs.PrivEvents, merged, eventLog)
 	go detection.StartFileMonitor(objs.FileEvents, merged, eventLog)
-	go detection.StartReverseShellDetector(objs.ConnectEvents, merged, eventLog)
+	// go detection.StartReverseShellDetector(objs.ConnectEvents, merged, eventLog)
 	go detection.StartFilelessDetector(objs.MemfdEvents, merged, eventLog)
-	go detection.StartDup2Detector(objs.Dup2Events, merged, eventLog)
+	// go detection.StartDup2Detector(objs.Dup2Events, merged, eventLog)
+	go detection.StartSelfDefenseDetector(objs.KillEvents, merged, eventLog)
 	go detection.StartSelfDefenseDetector(objs.KillEvents, merged, eventLog)
 
 	// ── Background: read the syscall counter every 5s ───────────────────

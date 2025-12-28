@@ -42,13 +42,26 @@ func (e *MemfdEvent) NameString() string {
 
 // Legitimate uses of memfd_create (e.g., display servers, browsers).
 var allowedMemfdUsers = map[string]bool{
-	"Xorg":        true,
-	"Xwayland":    true,
-	"pulseaudio":  true,
-	"pipewire":    true,
-	"gnome-shell": true,
-	"gdm":         true,
-	"systemd":     true,
+	"Xorg":            true,
+	"Xwayland":        true,
+	"pulseaudio":      true,
+	"pipewire":        true,
+	"pipewire-pulse":  true,
+	"wireplumber":     true,
+	"gnome-shell":     true,
+	"gdm":             true,
+	"systemd":         true,
+	"chrome":          true,
+	"chrome_crashpad": true,
+	"antigravity":     true,
+	"antigravit:gl0":  true,
+	"code":            true, // VS Code
+	"node":            true,
+	"python3":         true,
+	"python":          true,
+	"electron":        true,
+	"cinnamon":        true, // Desktop environment
+	"nautilus":        true, // File manager
 }
 
 // StartFilelessDetector monitors memfd_create calls to detect

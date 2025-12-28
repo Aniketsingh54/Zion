@@ -85,15 +85,14 @@ sleep $PAUSE
 echo ""
 echo -e "${CYAN}━━━ [8/8] Sensor Tampering (T1562) ━━━${NC}"
 echo -e "  ${RED}⚠️  This will send SIGTERM to Zion — run last!${NC}"
-echo -e "  ${YELLOW}Skipping in automated mode. Run manually:${NC}"
-echo -e "  ${GREEN}sudo bash attacks/08_sensor_tamper.sh${NC}"
+bash "$SCRIPT_DIR/08_sensor_tamper.sh" || true
 
 # ── Summary ────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║              SIMULATION COMPLETE                         ║${NC}"
 echo -e "${CYAN}╠══════════════════════════════════════════════════════════╣${NC}"
-echo -e "${CYAN}║  7/8 attacks executed (sensor tamper skipped)             ║${NC}"
+echo -e "${CYAN}║  8/8 attacks executed (sensor tamper included)            ║${NC}"
 echo -e "${CYAN}║  Check Zion terminal for CRITICAL alerts                 ║${NC}"
 echo -e "${CYAN}║  Check ./logs/ for JSON event log                        ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════════════════╝${NC}"

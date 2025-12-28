@@ -31,7 +31,7 @@ type FileEvent struct {
 	Flags    uint32
 	Pad      uint32
 	Comm     [64]byte
-	Filename [128]byte
+	Filename [64]byte
 }
 
 func (e *FileEvent) CommString() string {
@@ -195,6 +195,18 @@ func StartFileMonitor(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Logger) 
 		}
 		if cfg.IsPersistenceWriter(comm) {
 			continue
+		}
+
+		// Whitelist for /proc/*/maps and /mem (Credential Dumping false positives)
+		// Chrome, VS Code, Python, Antigravity often read maps/mem for JIT/debugging
+		if strings.HasPrefix(filename, "/proc/") &&
+			(strings.HasSuffix(filename, "/maps") || strings.HasSuffix(filename, "/mem")) {
+			if comm == "chrome" || comm == "chrome_crashpad" || comm == "antigravity" ||
+				comm == "code" || comm == "node" || comm == "python3" || comm == "python" || comm == "electron" ||
+				comm == "snap" || comm == "snap-seccomp" || comm == "snap-confine" || comm == "snap-exec" || comm == "go" ||
+				comm == "MemoryInfra" || comm == "php8.4" || comm == "php" || comm == "sessionclean" {
+				continue
+			}
 		}
 
 		// Classify the file access

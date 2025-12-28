@@ -36,8 +36,15 @@ EOF
 echo -e "  Compiling exploit: ${EXPLOIT_SRC}"
 gcc -o "$EXPLOIT_BIN" "$EXPLOIT_SRC" 2>/dev/null
 
-echo -e "  ${RED}Executing: ${EXPLOIT_BIN}${NC}"
-"$EXPLOIT_BIN" || true
+
+echo -e "  Attempting to run exploit as the original user (to trigger detection)..."
+if [ -n "${SUDO_USER:-}" ]; then
+    echo "  Running as: $SUDO_USER"
+    sudo -u "$SUDO_USER" "$EXPLOIT_BIN" || true
+else
+    echo "  Running as current user (root?)"
+    "$EXPLOIT_BIN" || true
+fi
 
 # Cleanup
 rm -f "$EXPLOIT_SRC" "$EXPLOIT_BIN"

@@ -3,6 +3,14 @@
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 
+// Helper declarations missing from vendored bpf_helpers.h
+#ifndef __always_inline
+#define __always_inline inline __attribute__((always_inline))
+#endif
+
+static long (*bpf_probe_read_user)(void *dst, __u32 size, const void *unsafe_ptr) = (void *) 112;
+static long (*bpf_probe_read_user_str)(void *dst, __u32 size, const void *unsafe_ptr) = (void *) 114;
+
 // ═══════════════════════════════════════════════════════════════════════
 // PR #1 — Syscall counter (proves probe is alive)
 // ═══════════════════════════════════════════════════════════════════════
@@ -198,7 +206,7 @@ int trace_setuid(struct sys_enter_setuid_args *ctx) {
 //          Persistence (T1053)
 // ═══════════════════════════════════════════════════════════════════════
 
-#define FILENAME_LEN 128
+#define FILENAME_LEN 64
 
 // Context struct for tracepoint/syscalls/sys_enter_openat
 struct sys_enter_openat_args {
@@ -227,160 +235,44 @@ struct {
     __uint(max_entries, 1 << 22); // 4 MB
 } file_events SEC(".maps");
 
-// Simple byte comparison helper (eBPF-safe, bounded loop).
-static __always_inline int match_prefix(const char *buf, const char *prefix, int len) {
-    for (int i = 0; i < len; i++) {
-        if (buf[i] != prefix[i])
-            return 0;
-        if (prefix[i] == '\0')
-            return 1;
-    }
-    return 1;
-}
-
 SEC("tracepoint/syscalls/sys_enter_openat")
 int trace_openat(struct sys_enter_openat_args *ctx) {
-    // Read filename from user-space pointer
-    char fname[FILENAME_LEN];
-    int ret = bpf_probe_read_user_str(fname, sizeof(fname), ctx->filename);
-    if (ret <= 0) {
+    // Read ONLY 8 bytes for a fast pre-filter (avoids verifier explosion).
+    char prefix[8];
+    if (bpf_probe_read_user(prefix, sizeof(prefix), ctx->filename) < 0)
         return 0;
-    }
 
-    // ── Kernel-side filter: only emit events for sensitive paths ──
-    // This prevents flooding userspace with millions of benign opens.
-    int dominated = 0;
+    // Fast pre-filter on first few characters
+    int hit = 0;
+    if (prefix[0] == '/' && prefix[1] == 'e' && prefix[2] == 't' && prefix[3] == 'c')
+        hit = 1;  // /etc/*
+    if (prefix[0] == '/' && prefix[1] == 'v' && prefix[2] == 'a' && prefix[3] == 'r')
+        hit = 1;  // /var/*
+    if (prefix[0] == '/' && prefix[1] == 'p' && prefix[2] == 'r' && prefix[3] == 'o')
+        hit = 1;  // /proc/*
+    if (prefix[0] == '.' && (prefix[1] == 'b' || prefix[1] == 'p' || prefix[1] == 'z'))
+        hit = 1;  // .bashrc, .profile, .zshrc, .bash_history
+    if (prefix[0] == '/' && prefix[1] == 'h' && prefix[2] == 'o' && prefix[3] == 'm') // /home/*
+        hit = 1;
+    if (prefix[0] == '/' && prefix[1] == 'r' && prefix[2] == 'o' && prefix[3] == 'o') // /root/*
+        hit = 1;
 
-    // Credential files
-    if (match_prefix(fname, "/etc/shadow", 12))    dominated = 1;
-    if (match_prefix(fname, "/etc/gshadow", 13))   dominated = 1;
-    if (match_prefix(fname, "/etc/passwd", 12))     dominated = 1;
-
-    // Log files (defense evasion targets)
-    if (match_prefix(fname, "/var/log/", 9))        dominated = 1;
-
-    // History files
-    if (match_prefix(fname, ".bash_history", 14))   dominated = 1;
-
-    // Persistence targets
-    if (match_prefix(fname, "/etc/crontab", 13))    dominated = 1;
-    if (match_prefix(fname, "/etc/cron.", 10))       dominated = 1;
-    if (match_prefix(fname, "/var/spool/cron", 15))  dominated = 1;
-    if (match_prefix(fname, ".bashrc", 8))           dominated = 1;
-    if (match_prefix(fname, ".profile", 9))          dominated = 1;
-
-    // proc maps (credential dumping)
-    if (match_prefix(fname, "/proc/", 6))  {
-        // Check for /proc/*/maps or /proc/*/mem
-        for (int i = 6; i < 20 && i < ret; i++) {
-            if (fname[i] == '/') {
-                if (match_prefix(&fname[i], "/maps", 5))  dominated = 1;
-                if (match_prefix(&fname[i], "/mem", 4))   dominated = 1;
-                break;
-            }
-        }
-    }
-
-    if (!dominated) {
+    if (!hit)
         return 0;
-    }
 
-    // ── Emit event ──
+    // Passed filter → emit full event (filename read directly into ringbuf)
     struct file_event *evt = bpf_ringbuf_reserve(&file_events, sizeof(*evt), 0);
-    if (!evt) {
+    if (!evt)
         return 0;
-    }
 
     __u64 pid_tgid = bpf_get_current_pid_tgid();
     evt->pid   = (__u32)(pid_tgid >> 32);
-
     __u64 uid_gid = bpf_get_current_uid_gid();
     evt->uid   = (__u32)uid_gid;
-
     evt->flags = (__u32)ctx->flags;
     evt->pad   = 0;
-
     bpf_get_current_comm(&evt->comm, sizeof(evt->comm));
-
-    // Copy filename
     bpf_probe_read_user_str(evt->filename, sizeof(evt->filename), ctx->filename);
-
-    bpf_ringbuf_submit(evt, 0);
-    return 0;
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// PR #7 — Outbound Connection Monitor (sys_connect)
-// Detects: Reverse Shell (T1059.004), C2 Beaconing
-// ═══════════════════════════════════════════════════════════════════════
-
-// Context struct for tracepoint/syscalls/sys_enter_connect
-struct sys_enter_connect_args {
-    __u64 pad;
-    __s32 __syscall_nr;
-    __u32 pad2;
-    __s64 fd;
-    struct sockaddr *uservaddr;
-    __s64 addrlen;
-};
-
-// Event sent to Go for connection analysis.
-struct connect_event {
-    __u32 pid;
-    __u32 uid;
-    __u16 port;            // destination port (network byte order → converted)
-    __u16 family;          // AF_INET or AF_INET6
-    __u32 dst_ip4;         // IPv4 destination (network byte order)
-    __u8  comm[TASK_COMM_LEN];
-};
-
-// Ring buffer for connect events.
-struct {
-    __uint(type, BPF_MAP_TYPE_RINGBUF);
-    __uint(max_entries, 1 << 20); // 1 MB
-} connect_events SEC(".maps");
-
-SEC("tracepoint/syscalls/sys_enter_connect")
-int trace_connect(struct sys_enter_connect_args *ctx) {
-    // Read the sockaddr_family first
-    __u16 family = 0;
-    bpf_probe_read_user(&family, sizeof(family), &ctx->uservaddr->sa_family);
-
-    // Only care about IPv4 (AF_INET = 2) for now
-    if (family != 2) {
-        return 0;
-    }
-
-    // Read the full sockaddr_in
-    struct sockaddr_in addr = {};
-    bpf_probe_read_user(&addr, sizeof(addr), ctx->uservaddr);
-
-    // Filter out loopback (127.x.x.x) and unspecified (0.0.0.0)
-    // to reduce noise — but still useful for demo
-    __u32 ip = addr.sin_addr.s_addr;
-
-    // Skip Unix domain sockets connecting to port 0
-    __u16 port = __builtin_bswap16(addr.sin_port);
-    if (port == 0) {
-        return 0;
-    }
-
-    struct connect_event *evt = bpf_ringbuf_reserve(&connect_events, sizeof(*evt), 0);
-    if (!evt) {
-        return 0;
-    }
-
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    evt->pid    = (__u32)(pid_tgid >> 32);
-
-    __u64 uid_gid = bpf_get_current_uid_gid();
-    evt->uid    = (__u32)uid_gid;
-
-    evt->port   = port;
-    evt->family = family;
-    evt->dst_ip4 = ip;
-
-    bpf_get_current_comm(&evt->comm, sizeof(evt->comm));
 
     bpf_ringbuf_submit(evt, 0);
     return 0;
@@ -439,62 +331,7 @@ int trace_memfd_create(struct sys_enter_memfd_create_args *ctx) {
     return 0;
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Reverse Shell Enhancement — dup2 FD Redirection
-// Detects shell processes redirecting stdin/stdout/stderr to sockets
-// ═══════════════════════════════════════════════════════════════════════
-
-// Context struct for tracepoint/syscalls/sys_enter_dup2
-struct sys_enter_dup2_args {
-    __u64 pad;
-    __s32 __syscall_nr;
-    __u32 pad2;
-    __u64 oldfd;
-    __u64 newfd;
-};
-
-// Event for dup2 calls.
-struct dup2_event {
-    __u32 pid;
-    __u32 uid;
-    __u32 oldfd;
-    __u32 newfd;
-    __u8  comm[TASK_COMM_LEN];
-};
-
-// Ring buffer for dup2 events.
-struct {
-    __uint(type, BPF_MAP_TYPE_RINGBUF);
-    __uint(max_entries, 1 << 20); // 1 MB
-} dup2_events SEC(".maps");
-
-SEC("tracepoint/syscalls/sys_enter_dup2")
-int trace_dup2(struct sys_enter_dup2_args *ctx) {
-    // Only care about redirections into stdin(0), stdout(1), stderr(2)
-    __u64 newfd = ctx->newfd;
-    if (newfd > 2) {
-        return 0;
-    }
-
-    struct dup2_event *evt = bpf_ringbuf_reserve(&dup2_events, sizeof(*evt), 0);
-    if (!evt) {
-        return 0;
-    }
-
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    evt->pid   = (__u32)(pid_tgid >> 32);
-
-    __u64 uid_gid = bpf_get_current_uid_gid();
-    evt->uid   = (__u32)uid_gid;
-
-    evt->oldfd = (__u32)ctx->oldfd;
-    evt->newfd = (__u32)newfd;
-
-    bpf_get_current_comm(&evt->comm, sizeof(evt->comm));
-
-    bpf_ringbuf_submit(evt, 0);
-    return 0;
-}
+// (Reverse Shell Detection via sys_connect and sys_dup2 has been removed per user request)
 
 // ═══════════════════════════════════════════════════════════════════════
 // Sensor Tampering Detection — sys_kill (T1562)

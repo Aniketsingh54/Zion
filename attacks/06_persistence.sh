@@ -16,20 +16,16 @@ echo -e "${YELLOW} Add and remove a crontab entry${NC}"
 echo -e "${YELLOW}═══════════════════════════════════════════════════${NC}"
 echo ""
 
-# Save current crontab
-CRON_BAK=$(mktemp)
-crontab -l > "$CRON_BAK" 2>/dev/null || echo "" > "$CRON_BAK"
-
-# Add a malicious crontab entry (backdoor persistence)
-echo -e "  ${RED}Adding malicious crontab entry...${NC}"
-(crontab -l 2>/dev/null; echo "*/5 * * * * /tmp/.zion_backdoor.sh # ZION_TEST") | crontab - 2>/dev/null || true
+# Add a malicious cron job to system-wide cron.d
+# This uses openat() which our sensor monitors.
+echo -e "  ${RED}Creating malicious cron file /etc/cron.d/zion_test...${NC}"
+echo "* * * * * root /tmp/.zion_backdoor.sh" | tee /etc/cron.d/zion_test >/dev/null
 echo "  → Zion should flag this as PERSISTENCE (T1053.003)"
 
 sleep 1
 
-# Immediately remove it
+# Cleanup
 echo -e "  ${GREEN}Removing malicious entry (cleanup)...${NC}"
-crontab "$CRON_BAK" 2>/dev/null || crontab -r 2>/dev/null || true
-rm -f "$CRON_BAK"
+rm -f /etc/cron.d/zion_test
 
 echo -e "  Persistence simulation complete."

@@ -99,22 +99,32 @@ func StartInjectionDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Lo
 		ts := logger.Timestamp()
 
 		if isRoot {
-			// Root ptrace — log as INFO, not an alert
+			// Root ptrace — Treating as CRITICAL for demo visibility (normally INFO)
 			eventLog.Log(logger.Event{
 				EventType: logger.EventInjection,
-				Severity:  logger.SeverityInfo,
+				Severity:  logger.SeverityCritical,
 				PID:       evt.AttackerPID,
 				UID:       evt.AttackerUID,
 				Comm:      evt.CommString(),
 				Details: map[string]string{
 					"target_pid": fmt.Sprintf("%d", evt.TargetPID),
 					"request":    evt.RequestName(),
-					"verdict":    "root_ptrace",
+					"verdict":    "root_ptrace_demo",
 				},
 			})
 
-			fmt.Printf("\n[%s] [ZION] INFO: Root ptrace — %s (PID: %d) → Target PID: %d [%s]\n",
-				ts, evt.CommString(), evt.AttackerPID, evt.TargetPID, evt.RequestName())
+			fmt.Println()
+			fmt.Println("╔═══════════════════════════════════════════════════════════╗")
+			fmt.Println("║  ⚠️  CRITICAL: PROCESS INJECTION (ROOT) DETECTED         ║")
+			fmt.Println("╠═══════════════════════════════════════════════════════════╣")
+			fmt.Printf("║  Time:     %-46s║\n", ts)
+			fmt.Printf("║  Attacker: %-15s (PID: %-6d, UID: %-5d)   ║\n",
+				evt.CommString(), evt.AttackerPID, evt.AttackerUID)
+			fmt.Printf("║  Target:   PID %-6d                                    ║\n",
+				evt.TargetPID)
+			fmt.Printf("║  Action:   %-15s (Root User)                   ║\n",
+				evt.RequestName())
+			fmt.Println("╚═══════════════════════════════════════════════════════════╝")
 
 		} else if isParent {
 			// Parent debugging child — probably a debugger

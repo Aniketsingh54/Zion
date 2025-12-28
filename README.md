@@ -26,7 +26,6 @@ Zion is a **host-based intrusion detection and response system** (HIDS) that ope
 | **Process Telemetry** | Tracepoint on `sched_process_exec` | T1059 |
 | **Injection Detection** | Tracepoint on `sys_ptrace` | T1055 |
 | **Privilege Escalation** | Tracepoint on `sys_setuid` | T1068 |
-| **Reverse Shell** | Tracepoint on `sys_connect` + `sys_dup2` | T1059.004 |
 | **Credential Access** | Tracepoint on `sys_openat` | T1003.008 |
 | **Defense Evasion** | Log/history tampering detection | T1070.002 |
 | **Persistence** | Crontab/bashrc modification | T1053.003 |
@@ -170,7 +169,6 @@ zion/
 ├── detection/
 │   ├── injection.go         # Ptrace injection detector (T1055)
 │   ├── privilege.go         # Privilege escalation detector (T1068)
-│   ├── reverse_shell.go     # Outbound connection monitor (T1059.004)
 │   ├── file_monitor.go      # Credential/log/persistence monitor (T1003/T1070/T1053)
 │   ├── fileless.go          # Fileless execution detector (T1620)
 │   └── self_defense.go      # Sensor tampering + dup2 detection (T1562)
@@ -181,7 +179,6 @@ zion/
 │   ├── run_all.sh           # Master runner (all 8 attacks in sequence)
 │   ├── 01_injection.sh      # T1055: strace ptrace attach
 │   ├── 02_privesc.sh        # T1068: setuid(0) exploit
-│   ├── 03_reverse_shell.sh  # T1059: nc/ncat/bash reverse shell
 │   ├── 04_credential_access.sh  # T1003: /etc/shadow read
 │   ├── 05_defense_evasion.sh    # T1070: history/log wiping
 │   ├── 06_persistence.sh    # T1053: crontab backdoor
