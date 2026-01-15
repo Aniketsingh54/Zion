@@ -170,9 +170,12 @@ func StartInjectionDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Lo
 				evt.TargetPID)
 			fmt.Printf("║  Action:   %-15s                               ║\n",
 				evt.RequestName())
+			if cfg.ShouldEnforce() {
+				fmt.Println("║  Status:   BLOCKED BY LSM (syscall denied in-kernel)     ║")
+			}
 			fmt.Println("╚═══════════════════════════════════════════════════════════╝")
 
-			// AUTO-RESPONSE: dispatch kill order (unless dry-run)
+			// AUTO-RESPONSE: dispatch kill order (unless dry-run or LSM enforcing)
 			if cfg.ShouldAutoKill() {
 				eventLog.Log(logger.Event{
 					EventType: logger.EventResponse,
@@ -194,6 +197,10 @@ func StartInjectionDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Lo
 					Reason:     "Process injection via " + evt.RequestName(),
 					SocketPath: cfg.SocketPath(),
 				})
+			} else if cfg.ShouldEnforce() {
+				// LSM already blocked it — no kill needed
+				fmt.Printf("[%s] [ZION] 🛡️  LSM blocked ptrace for PID %d (%s) — no kill needed\n",
+					ts, evt.AttackerPID, evt.CommString())
 			} else {
 				fmt.Printf("[%s] [ZION] ⏸️  Dry-run: kill suppressed for PID %d (%s)\n",
 					ts, evt.AttackerPID, evt.CommString())

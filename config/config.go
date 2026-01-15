@@ -9,10 +9,11 @@ import (
 
 // Config holds all Zion runtime configuration loaded from config.yaml.
 type Config struct {
-	Whitelist WhitelistConfig `yaml:"whitelist"`
-	Response  ResponseConfig  `yaml:"response"`
-	Logging   LoggingConfig   `yaml:"logging"`
-	Verbose   bool            `yaml:"verbose"`
+	Whitelist  WhitelistConfig  `yaml:"whitelist"`
+	Response   ResponseConfig   `yaml:"response"`
+	Logging    LoggingConfig    `yaml:"logging"`
+	Prevention PreventionConfig `yaml:"prevention"`
+	Verbose    bool             `yaml:"verbose"`
 }
 
 // WhitelistConfig holds process whitelists for all detection categories.
@@ -22,6 +23,14 @@ type WhitelistConfig struct {
 	CredentialReaders  []string `yaml:"credential_readers"`
 	LogWriters         []string `yaml:"log_writers"`
 	PersistenceWriters []string `yaml:"persistence_writers"`
+	MemfdAllowed       []string `yaml:"memfd_allowed"`
+	PtraceAllowed      []string `yaml:"ptrace_allowed"`
+}
+
+// PreventionConfig holds BPF-LSM enforcement policy.
+type PreventionConfig struct {
+	Enforce         bool     `yaml:"enforce"`
+	BlockedBinaries []string `yaml:"blocked_binaries"`
 }
 
 // ResponseConfig holds automated response settings.
@@ -45,6 +54,7 @@ type RuntimeOverrides struct {
 	Verbose bool
 	LogDir  string
 	Stats   bool
+	Enforce bool // --enforce flag (enables BPF-LSM blocking)
 }
 
 // Merged combines Config + CLI overrides into the final runtime settings.
@@ -108,6 +118,10 @@ func Merge(cfg *Config, overrides RuntimeOverrides) *Merged {
 	if overrides.LogDir != "" {
 		m.Config.Logging.Directory = overrides.LogDir
 	}
+	// --enforce flag overrides config
+	if overrides.Enforce {
+		m.Config.Prevention.Enforce = true
+	}
 
 	// Build lookup maps for O(1) checks
 	m.execWhitelist = buildMap(cfg.Whitelist.Exec)
@@ -153,8 +167,17 @@ func (m *Merged) IsPersistenceWriter(comm string) bool {
 }
 
 // ShouldAutoKill returns true if automated response is enabled.
+// When LSM enforcement is active, auto-kill is unnecessary (attacks are blocked in-kernel).
 func (m *Merged) ShouldAutoKill() bool {
+	if m.ShouldEnforce() {
+		return false // LSM blocks attacks — no need to kill
+	}
 	return m.Config.Response.AutoKill && !m.NoKill
+}
+
+// ShouldEnforce returns true if BPF-LSM enforcement mode is enabled.
+func (m *Merged) ShouldEnforce() bool {
+	return m.Config.Prevention.Enforce
 }
 
 // SocketPath returns the configured enforcer socket path.

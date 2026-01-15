@@ -98,10 +98,14 @@ func StartPrivilegeDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Lo
 				comm, evt.PID)
 			fmt.Printf("║  UID:      %d → %d (ROOT)                                ║\n",
 				evt.OldUID, evt.NewUID)
-			fmt.Println("║  Status:   UNAUTHORIZED ELEVATION                        ║")
+			if cfg.ShouldEnforce() {
+				fmt.Println("║  Status:   BLOCKED BY LSM (setuid denied in-kernel)      ║")
+			} else {
+				fmt.Println("║  Status:   UNAUTHORIZED ELEVATION                        ║")
+			}
 			fmt.Println("╚═══════════════════════════════════════════════════════════╝")
 
-			// AUTO-RESPONSE: dispatch kill order (unless dry-run)
+			// AUTO-RESPONSE: dispatch kill order (unless dry-run or LSM enforcing)
 			if cfg.ShouldAutoKill() {
 				eventLog.Log(logger.Event{
 					EventType: logger.EventResponse,
@@ -123,6 +127,9 @@ func StartPrivilegeDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Lo
 					Reason:     fmt.Sprintf("Unauthorized setuid %d → %d", evt.OldUID, evt.NewUID),
 					SocketPath: cfg.SocketPath(),
 				})
+			} else if cfg.ShouldEnforce() {
+				fmt.Printf("[%s] [ZION] 🛡️  LSM blocked setuid for PID %d (%s) — no kill needed\n",
+					ts, evt.PID, comm)
 			} else {
 				fmt.Printf("[%s] [ZION] ⏸️  Dry-run: kill suppressed for PID %d (%s)\n",
 					ts, evt.PID, comm)

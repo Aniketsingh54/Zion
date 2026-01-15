@@ -4,6 +4,45 @@
 
 # Processes to ignore in exec telemetry (shell prompt noise, IDE, etc.)
 whitelist:
+  # Processes allowed to use ptrace / read /proc/[pid]/* (LSM enforcement)
+  ptrace_allowed:
+    - ps
+    - top
+    - htop
+    - cat
+    - head
+    - tail
+    - grep
+    - awk
+    - sed
+    - wc
+    - less
+    - more
+    - antigravity
+    - code
+    - node
+    - python3
+    - python
+    - chrome
+    - electron
+    - systemd
+    - pidof
+    - pgrep
+    - pkill
+    - lsof
+    - ss
+    - netstat
+    - who
+    - w
+    - uptime
+    - free
+    - vmstat
+    - iostat
+    - sar
+    - snap
+    - cpuUsage.sh
+
+  # Processes to ignore in exec telemetry (shell prompt noise, IDE, etc.)
   exec:
     # Shell prompt / powerline
     - ip
@@ -70,6 +109,33 @@ whitelist:
     - vim
     - nano
     - vi
+
+  # Processes allowed to use memfd_create (display servers, browsers, etc.)
+  memfd_allowed:
+    - Xorg
+    - Xwayland
+    - pulseaudio
+    - pipewire
+    - pipewire-pulse
+    - wireplumber
+    - gnome-shell
+    - gdm
+    - systemd
+    - chrome
+    - chrome_crashpad
+    - code
+    - node
+    - python3
+    - python
+    - electron
+    - cinnamon
+    - nautilus
+
+# BPF-LSM Prevention Policy (deterministic blocking — no race conditions)
+# Run with: sudo ./zion --enforce
+prevention:
+  enforce: false              # Set true or use --enforce flag to enable
+  blocked_binaries: []        # Binaries to block from executing (e.g., ["ncat", "socat"])
 
 # Response settings
 response:

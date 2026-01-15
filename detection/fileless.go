@@ -147,6 +147,9 @@ func StartFilelessDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Log
 				Reason:     fmt.Sprintf("Fileless execution via memfd_create(%s)", name),
 				SocketPath: cfg.SocketPath(),
 			})
+		} else if cfg.ShouldEnforce() {
+			fmt.Printf("[%s] [ZION] 🛡️  LSM blocked memfd_create for PID %d (%s) — no kill needed\n",
+				ts, evt.PID, comm)
 		} else {
 			fmt.Printf("[%s] [ZION] ⏸️  Dry-run: kill suppressed for PID %d (%s)\n",
 				ts, evt.PID, comm)

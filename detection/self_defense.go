@@ -118,6 +118,9 @@ func StartSelfDefenseDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.
 				Reason:     fmt.Sprintf("Sensor tampering: %s on Zion", evt.SignalName()),
 				SocketPath: cfg.SocketPath(),
 			})
+		} else if cfg.ShouldEnforce() {
+			fmt.Printf("[%s] [ZION] 🛡️  LSM blocked kill signal for PID %d (%s) — Zion protected\n",
+				ts, evt.CallerPID, comm)
 		} else {
 			fmt.Printf("[%s] [ZION] ⏸️  Dry-run: kill suppressed for PID %d (%s)\n",
 				ts, evt.CallerPID, comm)

@@ -15,6 +15,7 @@ import (
 	"github.com/aniket/zion/config"
 	"github.com/aniket/zion/detection"
 	"github.com/aniket/zion/logger"
+	"github.com/aniket/zion/lsm"
 	"github.com/aniket/zion/telemetry"
 )
 
@@ -27,6 +28,7 @@ func main() {
 	noKill := flag.Bool("no-kill", false, "Dry-run mode: detect threats but don't kill processes")
 	verbose := flag.Bool("verbose", false, "Show all exec events including whitelisted")
 	stats := flag.Bool("stats", true, "Print event statistics on shutdown")
+	enforce := flag.Bool("enforce", false, "Enable BPF-LSM enforcement (deterministic blocking)")
 	flag.Parse()
 
 	// ── Gate: must be root ──────────────────────────────────────────────
@@ -45,6 +47,7 @@ func main() {
 		Verbose: *verbose,
 		LogDir:  *logDir,
 		Stats:   *stats,
+		Enforce: *enforce,
 	})
 
 	// ── Initialize event logger ─────────────────────────────────────────
@@ -140,10 +143,12 @@ func main() {
 	fmt.Println("║  Probes:  7 active tracepoints                              ║")
 	fmt.Println("║  Detect:  6 attack vectors (MITRE ATT&CK mapped)            ║")
 	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
-	if merged.NoKill {
+	if merged.ShouldEnforce() {
+		fmt.Println("⚙️  Mode: ENFORCE (BPF-LSM deterministic blocking active)")
+	} else if merged.NoKill {
 		fmt.Println("⚙️  Mode: DRY-RUN (detection only, no auto-kill)")
 	} else {
-		fmt.Println("⚙️  Mode: ARMED (auto-kill enabled)")
+		fmt.Println("⚙️  Mode: ARMED (auto-kill enabled, detect-then-respond)")
 	}
 	fmt.Printf("⚙️  Config: %s\n", *configPath)
 	fmt.Printf("⚙️  Self-defense PID: %d\n", zionPID)
@@ -161,6 +166,21 @@ func main() {
 	fmt.Println("Monitoring... Press Ctrl+C to exit.")
 	fmt.Println()
 
+	// ── Start BPF-LSM enforcement engine (if enabled) ───────────────
+	var lsmEngine *lsm.LSMEngine
+	if merged.ShouldEnforce() {
+		var err error
+		lsmEngine, err = lsm.New(merged, eventLog)
+		if err != nil {
+			log.Printf("[ZION] ⚠️  LSM enforcement unavailable: %v", err)
+			log.Println("[ZION] Falling back to detect-and-respond mode.")
+		} else {
+			defer lsmEngine.Close()
+			go lsm.StartLSMEventLogger(lsmEngine, eventLog)
+			fmt.Println("[ZION] 🛡️  BPF-LSM enforcement active — attacks will be BLOCKED in-kernel")
+		}
+	}
+
 	// ── Start telemetry & detection goroutines ──────────────────────────
 	go telemetry.StartExecLogger(objs.ExecEvents, merged, eventLog)
 	go detection.StartInjectionDetector(objs.PtraceEvents, merged, eventLog)
@@ -169,7 +189,6 @@ func main() {
 	// go detection.StartReverseShellDetector(objs.ConnectEvents, merged, eventLog)
 	go detection.StartFilelessDetector(objs.MemfdEvents, merged, eventLog)
 	// go detection.StartDup2Detector(objs.Dup2Events, merged, eventLog)
-	go detection.StartSelfDefenseDetector(objs.KillEvents, merged, eventLog)
 	go detection.StartSelfDefenseDetector(objs.KillEvents, merged, eventLog)
 
 	// ── Background: read the syscall counter every 5s ───────────────────
