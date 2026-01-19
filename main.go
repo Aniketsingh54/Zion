@@ -137,21 +137,21 @@ func main() {
 
 	// ── Banner ──────────────────────────────────────────────────────────
 	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
-	fmt.Println("║              ⚡ ZION Kernel Probe Active                    ║")
+	fmt.Println("║              ZION Kernel Probe Active                       ║")
 	fmt.Println("║          Behavioral Detection & Response Engine              ║")
 	fmt.Println("╠══════════════════════════════════════════════════════════════╣")
 	fmt.Println("║  Probes:  7 active tracepoints                              ║")
 	fmt.Println("║  Detect:  6 attack vectors (MITRE ATT&CK mapped)            ║")
 	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
 	if merged.ShouldEnforce() {
-		fmt.Println("⚙️  Mode: ENFORCE (BPF-LSM deterministic blocking active)")
+		fmt.Println("  Mode: ENFORCE (BPF-LSM deterministic blocking active)")
 	} else if merged.NoKill {
-		fmt.Println("⚙️  Mode: DRY-RUN (detection only, no auto-kill)")
+		fmt.Println("  Mode: DRY-RUN (detection only, no auto-kill)")
 	} else {
-		fmt.Println("⚙️  Mode: ARMED (auto-kill enabled, detect-then-respond)")
+		fmt.Println("  Mode: ARMED (auto-kill enabled, detect-then-respond)")
 	}
-	fmt.Printf("⚙️  Config: %s\n", *configPath)
-	fmt.Printf("⚙️  Self-defense PID: %d\n", zionPID)
+	fmt.Printf("  Config: %s\n", *configPath)
+	fmt.Printf("  Self-defense PID: %d\n", zionPID)
 	fmt.Println()
 	fmt.Println("  Detection Coverage:")
 	fmt.Println("  ├── T1055  Process Injection (ptrace)")
@@ -172,12 +172,12 @@ func main() {
 		var err error
 		lsmEngine, err = lsm.New(merged, eventLog)
 		if err != nil {
-			log.Printf("[ZION] ⚠️  LSM enforcement unavailable: %v", err)
+			log.Printf("[ZION] WARN: LSM enforcement unavailable: %v", err)
 			log.Println("[ZION] Falling back to detect-and-respond mode.")
 		} else {
 			defer lsmEngine.Close()
 			go lsm.StartLSMEventLogger(lsmEngine, eventLog)
-			fmt.Println("[ZION] 🛡️  BPF-LSM enforcement active — attacks will be BLOCKED in-kernel")
+			fmt.Println("[ZION] BPF-LSM enforcement active -- attacks blocked in-kernel")
 		}
 	}
 

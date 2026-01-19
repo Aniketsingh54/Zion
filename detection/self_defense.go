@@ -87,7 +87,7 @@ func StartSelfDefenseDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.
 
 		fmt.Println()
 		fmt.Println("╔═══════════════════════════════════════════════════════════╗")
-		fmt.Println("║  🛡️  CRITICAL: SENSOR TAMPERING DETECTED (T1562)         ║")
+		fmt.Println("|  CRITICAL: SENSOR TAMPERING DETECTED (T1562)              |")
 		fmt.Println("╠═══════════════════════════════════════════════════════════╣")
 		fmt.Printf("║  Time:     %-46s║\n", ts)
 		fmt.Printf("║  Attacker: %-15s (PID: %-6d, UID: %-5d)   ║\n",
@@ -119,7 +119,7 @@ func StartSelfDefenseDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.
 				SocketPath: cfg.SocketPath(),
 			})
 		} else if cfg.ShouldEnforce() {
-			fmt.Printf("[%s] [ZION] 🛡️  LSM blocked kill signal for PID %d (%s) — Zion protected\n",
+			fmt.Printf("[%s] [ZION] LSM blocked kill signal for PID %d (%s) -- Zion protected\n",
 				ts, evt.CallerPID, comm)
 		} else {
 			fmt.Printf("[%s] [ZION] ⏸️  Dry-run: kill suppressed for PID %d (%s)\n",

@@ -170,7 +170,7 @@ func (m *Merged) IsPersistenceWriter(comm string) bool {
 // When LSM enforcement is active, auto-kill is unnecessary (attacks are blocked in-kernel).
 func (m *Merged) ShouldAutoKill() bool {
 	if m.ShouldEnforce() {
-		return false // LSM blocks attacks — no need to kill
+		return false // LSM blocks attacks in-kernel, no need to kill
 	}
 	return m.Config.Response.AutoKill && !m.NoKill
 }

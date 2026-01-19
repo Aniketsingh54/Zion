@@ -1,7 +1,5 @@
 package lsm
 
-// Generate Go bindings for the LSM eBPF programs.
-// This compiles ebpf/zion_lsm.c into Go-loadable objects.
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -strip llvm-strip -type policy_flags zionLsm ../ebpf/zion_lsm.c -- -I../headers -O2 -g -target bpf
 
 import (
@@ -19,14 +17,13 @@ import (
 	"github.com/aniket/zion/logger"
 )
 
-// LSMEngine manages BPF-LSM programs for deterministic attack prevention.
+// LSMEngine manages loading, attaching, and policy for BPF-LSM programs.
 type LSMEngine struct {
 	objs  zionLsmObjects
 	links []link.Link
 }
 
-// LSMEvent mirrors the kernel-side struct zion_lsm_event.
-// Must match the layout in ebpf/zion_lsm.c exactly.
+// LSMEvent mirrors struct zion_lsm_event from ebpf/zion_lsm.c.
 type LSMEvent struct {
 	Pid      uint32
 	Uid      uint32
@@ -37,7 +34,6 @@ type LSMEvent struct {
 }
 
 // New loads and attaches all BPF-LSM programs.
-// Returns nil if the kernel doesn't support BPF-LSM (graceful fallback).
 func New(cfg *config.Merged, eventLog *logger.Logger) (*LSMEngine, error) {
 	var objs zionLsmObjects
 	if err := loadZionLsmObjects(&objs, nil); err != nil {
@@ -46,20 +42,19 @@ func New(cfg *config.Merged, eventLog *logger.Logger) (*LSMEngine, error) {
 
 	engine := &LSMEngine{objs: objs}
 
-	// ── Configure Zion's self-defense PID ────────────────────────────
+	// Set Zion's PID for self-defense hook
 	var pidKey uint32
 	zionPID := uint32(os.Getpid())
 	if err := objs.LsmZionPid.Update(pidKey, zionPID, ebpf.UpdateAny); err != nil {
-		log.Printf("[LSM] WARN: Failed to set self-defense PID: %v", err)
+		log.Printf("[LSM] WARN: failed to set self-defense PID: %v", err)
 	}
 
-	// ── Populate policy maps from config ─────────────────────────────
 	if err := engine.loadPolicy(cfg); err != nil {
 		objs.Close()
 		return nil, fmt.Errorf("failed to load LSM policy: %w", err)
 	}
 
-	// ── Attach all LSM programs ──────────────────────────────────────
+	// Attach LSM programs
 	lsmPrograms := []struct {
 		name string
 		prog *ebpf.Program
@@ -76,18 +71,16 @@ func New(cfg *config.Merged, eventLog *logger.Logger) (*LSMEngine, error) {
 			Program: p.prog,
 		})
 		if err != nil {
-			// Clean up already-attached links
 			engine.Close()
 			return nil, fmt.Errorf("failed to attach LSM/%s: %w", p.name, err)
 		}
 		engine.links = append(engine.links, l)
-		log.Printf("[LSM] ✅ Attached: lsm/%s", p.name)
+		log.Printf("[LSM] attached: lsm/%s", p.name)
 	}
 
 	return engine, nil
 }
 
-// Close detaches all LSM programs and releases resources.
 func (e *LSMEngine) Close() {
 	for _, l := range e.links {
 		l.Close()
@@ -95,14 +88,12 @@ func (e *LSMEngine) Close() {
 	e.objs.Close()
 }
 
-// EventReader returns a ring buffer reader for LSM decision events.
 func (e *LSMEngine) EventReader() (*ringbuf.Reader, error) {
 	return ringbuf.NewReader(e.objs.LsmEvents)
 }
 
-// loadPolicy populates BPF maps with the enforcement policy from config.
+// loadPolicy populates BPF maps from config.
 func (e *LSMEngine) loadPolicy(cfg *config.Merged) error {
-	// ── Set enforcement flags ────────────────────────────────────────
 	enforce := cfg.ShouldEnforce()
 
 	flags := zionLsmPolicyFlags{
@@ -119,58 +110,51 @@ func (e *LSMEngine) loadPolicy(cfg *config.Merged) error {
 		return fmt.Errorf("failed to set policy flags: %w", err)
 	}
 
-	// ── Populate ptrace allowed UIDs ─────────────────────────────────
-	// By default, allow root (UID 0) to ptrace
+	// Allow root UID for ptrace
 	var rootUID uint32
 	var dummy uint8 = 1
 	if err := e.objs.PtraceAllowedUids.Update(rootUID, dummy, ebpf.UpdateAny); err != nil {
-		return fmt.Errorf("failed to add root to ptrace allowed UIDs: %w", err)
+		return fmt.Errorf("failed to add root to ptrace UIDs: %w", err)
 	}
 
-	// ── Populate ptrace allowed comms (ps, cat, top, IDEs, etc.) ────
 	for _, comm := range cfg.Whitelist.PtraceAllowed {
 		commKey := commToKey(comm)
 		if err := e.objs.PtraceAllowedComms.Update(commKey, dummy, ebpf.UpdateAny); err != nil {
-			log.Printf("[LSM] WARN: Failed to add ptrace comm %q: %v", comm, err)
+			log.Printf("[LSM] WARN: ptrace comm %q: %v", comm, err)
 		}
 	}
 
-	// ── Populate setuid allowed comms ────────────────────────────────
 	for _, comm := range cfg.Whitelist.Escalation {
 		commKey := commToKey(comm)
 		if err := e.objs.SetuidAllowedComms.Update(commKey, dummy, ebpf.UpdateAny); err != nil {
-			log.Printf("[LSM] WARN: Failed to add setuid comm %q: %v", comm, err)
+			log.Printf("[LSM] WARN: setuid comm %q: %v", comm, err)
 		}
 	}
 
-	// ── Populate credential reader comms ─────────────────────────────
 	for _, comm := range cfg.Whitelist.CredentialReaders {
 		commKey := commToKey(comm)
 		if err := e.objs.CredentialReaderComms.Update(commKey, dummy, ebpf.UpdateAny); err != nil {
-			log.Printf("[LSM] WARN: Failed to add credential reader %q: %v", comm, err)
+			log.Printf("[LSM] WARN: credential reader %q: %v", comm, err)
 		}
 	}
 
-	// ── Populate memfd allowed comms ─────────────────────────────────
 	for _, comm := range cfg.Whitelist.MemfdAllowed {
 		commKey := commToKey(comm)
 		if err := e.objs.MemfdAllowedComms.Update(commKey, dummy, ebpf.UpdateAny); err != nil {
-			log.Printf("[LSM] WARN: Failed to add memfd allowed %q: %v", comm, err)
+			log.Printf("[LSM] WARN: memfd comm %q: %v", comm, err)
 		}
 	}
 
-	// ── Populate blocked exec comms ──────────────────────────────────
 	for _, comm := range cfg.Prevention.BlockedBinaries {
 		commKey := commToKey(comm)
 		if err := e.objs.BlockedExecComms.Update(commKey, dummy, ebpf.UpdateAny); err != nil {
-			log.Printf("[LSM] WARN: Failed to add blocked exec %q: %v", comm, err)
+			log.Printf("[LSM] WARN: blocked exec %q: %v", comm, err)
 		}
 	}
 
 	return nil
 }
 
-// commToKey converts a comm string to a fixed 16-byte key for BPF hash maps.
 func commToKey(comm string) [16]byte {
 	var key [16]byte
 	copy(key[:], comm)
@@ -184,9 +168,6 @@ func boolToU32(b bool) uint32 {
 	return 0
 }
 
-// ── LSM Event Reader (runs as goroutine) ────────────────────────────
-
-// HookName returns a human-readable name for the LSM hook ID.
 func HookName(hookID uint32) string {
 	switch hookID {
 	case 1:
@@ -206,7 +187,6 @@ func HookName(hookID uint32) string {
 	}
 }
 
-// MitreTechnique returns the MITRE ATT&CK ID for a given hook.
 func MitreTechnique(hookID uint32) string {
 	switch hookID {
 	case 1:
@@ -226,15 +206,15 @@ func MitreTechnique(hookID uint32) string {
 	}
 }
 
-// StartLSMEventLogger reads LSM decision events from the ring buffer and logs them.
-// Blocks forever — run as a goroutine.
+// StartLSMEventLogger reads block/allow decisions from the ring buffer.
+// Blocks forever; run as a goroutine.
 func StartLSMEventLogger(engine *LSMEngine, eventLog *logger.Logger) {
 	rd, err := engine.EventReader()
 	if err != nil {
-		log.Fatalf("[LSM] Failed to open LSM event ring buffer: %v", err)
+		log.Fatalf("[LSM] failed to open event ring buffer: %v", err)
 	}
 
-	log.Println("[LSM] 🛡️  LSM enforcement event logger active...")
+	log.Println("[LSM] enforcement event logger active")
 
 	for {
 		record, err := rd.Read()
@@ -247,7 +227,7 @@ func StartLSMEventLogger(engine *LSMEngine, eventLog *logger.Logger) {
 			bytes.NewReader(record.RawSample),
 			binary.LittleEndian, &evt,
 		); err != nil {
-			log.Printf("[LSM] Failed to decode LSM event: %v", err)
+			log.Printf("[LSM] failed to decode event: %v", err)
 			continue
 		}
 
@@ -258,7 +238,6 @@ func StartLSMEventLogger(engine *LSMEngine, eventLog *logger.Logger) {
 		mitre := MitreTechnique(evt.Hook)
 
 		if evt.Decision < 0 {
-			// BLOCKED
 			eventLog.Log(logger.Event{
 				EventType: logger.EventInjection,
 				Severity:  logger.SeverityCritical,
@@ -275,18 +254,18 @@ func StartLSMEventLogger(engine *LSMEngine, eventLog *logger.Logger) {
 			})
 
 			fmt.Println()
-			fmt.Println("╔═══════════════════════════════════════════════════════════╗")
-			fmt.Printf("║  🛡️  BLOCKED: %-43s║\n",
+			fmt.Println("+==========================================================+")
+			fmt.Printf("|  BLOCKED: %-47s|\n",
 				fmt.Sprintf("%s (%s)", hookName, mitre))
-			fmt.Println("╠═══════════════════════════════════════════════════════════╣")
-			fmt.Printf("║  Time:     %-46s║\n", ts)
-			fmt.Printf("║  Process:  %-15s (PID: %-6d, UID: %-5d)   ║\n",
+			fmt.Println("+----------------------------------------------------------+")
+			fmt.Printf("|  Time:     %-46s|\n", ts)
+			fmt.Printf("|  Process:  %-15s (PID: %-6d, UID: %-5d)   |\n",
 				comm, evt.Pid, evt.Uid)
 			if detail != "" {
-				fmt.Printf("║  Detail:   %-46s║\n", truncStr(detail, 46))
+				fmt.Printf("|  Detail:   %-46s|\n", truncStr(detail, 46))
 			}
-			fmt.Println("║  Result:   OPERATION DENIED (EPERM)                      ║")
-			fmt.Println("╚═══════════════════════════════════════════════════════════╝")
+			fmt.Println("|  Result:   OPERATION DENIED (EPERM)                      |")
+			fmt.Println("+==========================================================+")
 		}
 	}
 }

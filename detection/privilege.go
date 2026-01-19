@@ -128,7 +128,7 @@ func StartPrivilegeDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Lo
 					SocketPath: cfg.SocketPath(),
 				})
 			} else if cfg.ShouldEnforce() {
-				fmt.Printf("[%s] [ZION] 🛡️  LSM blocked setuid for PID %d (%s) — no kill needed\n",
+				fmt.Printf("[%s] [ZION] LSM blocked setuid for PID %d (%s) -- no kill needed\n",
 					ts, evt.PID, comm)
 			} else {
 				fmt.Printf("[%s] [ZION] ⏸️  Dry-run: kill suppressed for PID %d (%s)\n",
