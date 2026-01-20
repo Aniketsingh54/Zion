@@ -230,20 +230,20 @@ func StartFileMonitor(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Logger) 
 
 		if severity == logger.SeverityCritical {
 			fmt.Println()
-			fmt.Println("╔═══════════════════════════════════════════════════════════╗")
-			fmt.Printf("║  🔴 CRITICAL: %-43s║\n",
+			fmt.Println("+=========================================================+")
+			fmt.Printf("|  CRITICAL: %-47s|\n",
 				fmt.Sprintf("%s DETECTED (%s)", detectionType, mitreID))
-			fmt.Println("╠═══════════════════════════════════════════════════════════╣")
-			fmt.Printf("║  Time:     %-46s║\n", ts)
-			fmt.Printf("║  Process:  %-15s (PID: %-6d, UID: %-5d)   ║\n",
+			fmt.Println("+---------------------------------------------------------+")
+			fmt.Printf("|  Time:     %-46s|\n", ts)
+			fmt.Printf("|  Process:  %-15s (PID: %-6d, UID: %-5d)   |\n",
 				comm, evt.PID, evt.UID)
-			fmt.Printf("║  File:     %-46s║\n", truncateStr(filename, 46))
+			fmt.Printf("|  File:     %-46s|\n", truncateStr(filename, 46))
 			if evt.IsWrite() {
-				fmt.Println("║  Access:   WRITE                                         ║")
+				fmt.Println("|  Access:   WRITE                                         |")
 			} else {
-				fmt.Println("║  Access:   READ                                          ║")
+				fmt.Println("|  Access:   READ                                          |")
 			}
-			fmt.Println("╚═══════════════════════════════════════════════════════════╝")
+			fmt.Println("+=========================================================+")
 
 			// Auto-kill for credential access and log tampering
 			if cfg.ShouldAutoKill() && (detectionType == "CREDENTIAL ACCESS" ||
@@ -273,7 +273,7 @@ func StartFileMonitor(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Logger) 
 				fmt.Printf("[%s] [ZION] LSM blocked file access for PID %d (%s) -- no kill needed\n",
 					ts, evt.PID, comm)
 			} else if !cfg.ShouldAutoKill() {
-				fmt.Printf("[%s] [ZION] ⏸️  Dry-run: kill suppressed for PID %d (%s)\n",
+				fmt.Printf("[%s] [ZION] dry-run: kill suppressed for PID %d (%s)\n",
 					ts, evt.PID, comm)
 			}
 		} else if severity == logger.SeverityWarn {

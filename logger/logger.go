@@ -76,7 +76,7 @@ func New(dir string, enabled bool) (*Logger, error) {
 		return nil, fmt.Errorf("failed to create log file %s: %w", path, err)
 	}
 
-	fmt.Printf("[ZION] 📝 Event log: %s\n", path)
+	fmt.Printf("[ZION] Event log: %s\n", path)
 
 	return &Logger{
 		file:    f,
@@ -136,17 +136,17 @@ func (l *Logger) PrintStats() {
 	elapsed := time.Since(l.Stats.StartTime).Round(time.Second)
 
 	fmt.Println()
-	fmt.Println("╔══════════════════════════════════════════════╗")
-	fmt.Println("║           ZION SESSION SUMMARY               ║")
-	fmt.Println("╠══════════════════════════════════════════════╣")
-	fmt.Printf("║  Duration:           %-24s║\n", elapsed)
-	fmt.Printf("║  Exec events:        %-24d║\n", l.Stats.ExecEvents.Load())
-	fmt.Printf("║  Injection warnings: %-24d║\n", l.Stats.InjectionWarn.Load())
-	fmt.Printf("║  Injection CRITICAL: %-24d║\n", l.Stats.InjectionCrit.Load())
-	fmt.Printf("║  Priv esc (expected):%-24d║\n", l.Stats.PrivEscInfo.Load())
-	fmt.Printf("║  Priv esc CRITICAL:  %-24d║\n", l.Stats.PrivEscCrit.Load())
-	fmt.Printf("║  Kills dispatched:   %-24d║\n", l.Stats.KillsDispatched.Load())
-	fmt.Println("╚══════════════════════════════════════════════╝")
+	fmt.Println("+=============================================+")
+	fmt.Println("|           ZION SESSION SUMMARY              |")
+	fmt.Println("+---------------------------------------------+")
+	fmt.Printf("|  Duration:           %-24s|\n", elapsed)
+	fmt.Printf("|  Exec events:        %-24d|\n", l.Stats.ExecEvents.Load())
+	fmt.Printf("|  Injection warnings: %-24d|\n", l.Stats.InjectionWarn.Load())
+	fmt.Printf("|  Injection CRITICAL: %-24d|\n", l.Stats.InjectionCrit.Load())
+	fmt.Printf("|  Priv esc (expected):%-24d|\n", l.Stats.PrivEscInfo.Load())
+	fmt.Printf("|  Priv esc CRITICAL:  %-24d|\n", l.Stats.PrivEscCrit.Load())
+	fmt.Printf("|  Kills dispatched:   %-24d|\n", l.Stats.KillsDispatched.Load())
+	fmt.Println("+=============================================+")
 }
 
 // Timestamp returns a formatted timestamp string for console output.

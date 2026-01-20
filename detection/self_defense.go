@@ -86,16 +86,16 @@ func StartSelfDefenseDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.
 		})
 
 		fmt.Println()
-		fmt.Println("╔═══════════════════════════════════════════════════════════╗")
-		fmt.Println("|  CRITICAL: SENSOR TAMPERING DETECTED (T1562)              |")
-		fmt.Println("╠═══════════════════════════════════════════════════════════╣")
-		fmt.Printf("║  Time:     %-46s║\n", ts)
-		fmt.Printf("║  Attacker: %-15s (PID: %-6d, UID: %-5d)   ║\n",
+		fmt.Println("+=========================================================+")
+		fmt.Println("|  CRITICAL: SENSOR TAMPERING DETECTED (T1562)             |")
+		fmt.Println("+---------------------------------------------------------+")
+		fmt.Printf("|  Time:     %-46s|\n", ts)
+		fmt.Printf("|  Attacker: %-15s (PID: %-6d, UID: %-5d)   |\n",
 			comm, evt.CallerPID, evt.CallerUID)
-		fmt.Printf("║  Signal:   %-15s → Zion (PID: %-6d)        ║\n",
+		fmt.Printf("|  Signal:   %-15s -> Zion (PID: %-6d)        |\n",
 			evt.SignalName(), evt.TargetPID)
-		fmt.Println("║  Status:   ATTEMPT TO DISABLE SECURITY SENSOR            ║")
-		fmt.Println("╚═══════════════════════════════════════════════════════════╝")
+		fmt.Println("|  Status:   ATTEMPT TO DISABLE SECURITY SENSOR            |")
+		fmt.Println("+=========================================================+")
 
 		// Auto-kill the attacker trying to kill us
 		if cfg.ShouldAutoKill() {
@@ -122,7 +122,7 @@ func StartSelfDefenseDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.
 			fmt.Printf("[%s] [ZION] LSM blocked kill signal for PID %d (%s) -- Zion protected\n",
 				ts, evt.CallerPID, comm)
 		} else {
-			fmt.Printf("[%s] [ZION] ⏸️  Dry-run: kill suppressed for PID %d (%s)\n",
+			fmt.Printf("[%s] [ZION] dry-run: kill suppressed for PID %d (%s)\n",
 				ts, evt.CallerPID, comm)
 		}
 	}

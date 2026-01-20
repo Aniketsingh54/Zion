@@ -117,15 +117,15 @@ func StartFilelessDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Log
 		})
 
 		fmt.Println()
-		fmt.Println("╔═══════════════════════════════════════════════════════════╗")
-		fmt.Println("║  🟣 CRITICAL: FILELESS EXECUTION DETECTED (T1620)        ║")
-		fmt.Println("╠═══════════════════════════════════════════════════════════╣")
-		fmt.Printf("║  Time:     %-46s║\n", ts)
-		fmt.Printf("║  Process:  %-15s (PID: %-6d, UID: %-5d)   ║\n",
+		fmt.Println("+=========================================================+")
+		fmt.Println("|  CRITICAL: FILELESS EXECUTION DETECTED (T1620)           |")
+		fmt.Println("+---------------------------------------------------------+")
+		fmt.Printf("|  Time:     %-46s|\n", ts)
+		fmt.Printf("|  Process:  %-15s (PID: %-6d, UID: %-5d)   |\n",
 			comm, evt.PID, evt.UID)
-		fmt.Printf("║  MemFD:    %-46s║\n", name)
-		fmt.Println("║  Status:   IN-MEMORY CODE LOADING (NO DISK FILE)         ║")
-		fmt.Println("╚═══════════════════════════════════════════════════════════╝")
+		fmt.Printf("|  MemFD:    %-46s|\n", name)
+		fmt.Println("|  Status:   IN-MEMORY CODE LOADING (NO DISK FILE)         |")
+		fmt.Println("+=========================================================+")
 
 		if cfg.ShouldAutoKill() {
 			eventLog.Log(logger.Event{
@@ -151,7 +151,7 @@ func StartFilelessDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Log
 			fmt.Printf("[%s] [ZION] LSM blocked memfd_create for PID %d (%s) -- no kill needed\n",
 				ts, evt.PID, comm)
 		} else {
-			fmt.Printf("[%s] [ZION] ⏸️  Dry-run: kill suppressed for PID %d (%s)\n",
+			fmt.Printf("[%s] [ZION] dry-run: kill suppressed for PID %d (%s)\n",
 				ts, evt.PID, comm)
 		}
 	}

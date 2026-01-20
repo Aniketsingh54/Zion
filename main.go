@@ -136,13 +136,13 @@ func main() {
 	defer tp9.Close()
 
 	// ── Banner ──────────────────────────────────────────────────────────
-	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
-	fmt.Println("║              ZION Kernel Probe Active                       ║")
-	fmt.Println("║          Behavioral Detection & Response Engine              ║")
-	fmt.Println("╠══════════════════════════════════════════════════════════════╣")
-	fmt.Println("║  Probes:  7 active tracepoints                              ║")
-	fmt.Println("║  Detect:  6 attack vectors (MITRE ATT&CK mapped)            ║")
-	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
+	fmt.Println("+==============================================================+")
+	fmt.Println("|              ZION Kernel Probe Active                         |")
+	fmt.Println("|          Behavioral Detection & Response Engine               |")
+	fmt.Println("+--------------------------------------------------------------+")
+	fmt.Println("|  Probes:  7 active tracepoints                               |")
+	fmt.Println("|  Detect:  6 attack vectors (MITRE ATT&CK mapped)             |")
+	fmt.Println("+==============================================================+")
 	if merged.ShouldEnforce() {
 		fmt.Println("  Mode: ENFORCE (BPF-LSM deterministic blocking active)")
 	} else if merged.NoKill {

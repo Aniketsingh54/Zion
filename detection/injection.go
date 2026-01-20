@@ -114,17 +114,17 @@ func StartInjectionDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Lo
 			})
 
 			fmt.Println()
-			fmt.Println("╔═══════════════════════════════════════════════════════════╗")
-			fmt.Println("║  ⚠️  CRITICAL: PROCESS INJECTION (ROOT) DETECTED         ║")
-			fmt.Println("╠═══════════════════════════════════════════════════════════╣")
-			fmt.Printf("║  Time:     %-46s║\n", ts)
-			fmt.Printf("║  Attacker: %-15s (PID: %-6d, UID: %-5d)   ║\n",
+			fmt.Println("+=========================================================+")
+			fmt.Println("|  CRITICAL: PROCESS INJECTION (ROOT) DETECTED            |")
+			fmt.Println("+---------------------------------------------------------+")
+			fmt.Printf("|  Time:     %-46s|\n", ts)
+			fmt.Printf("|  Attacker: %-15s (PID: %-6d, UID: %-5d)   |\n",
 				evt.CommString(), evt.AttackerPID, evt.AttackerUID)
-			fmt.Printf("║  Target:   PID %-6d                                    ║\n",
+			fmt.Printf("|  Target:   PID %-6d                                    |\n",
 				evt.TargetPID)
-			fmt.Printf("║  Action:   %-15s (Root User)                   ║\n",
+			fmt.Printf("|  Action:   %-15s (Root User)                   |\n",
 				evt.RequestName())
-			fmt.Println("╚═══════════════════════════════════════════════════════════╝")
+			fmt.Println("+=========================================================+")
 
 		} else if isParent {
 			// Parent debugging child — probably a debugger
@@ -160,20 +160,20 @@ func StartInjectionDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Lo
 			})
 
 			fmt.Println()
-			fmt.Println("╔═══════════════════════════════════════════════════════════╗")
-			fmt.Println("║  ⚠️  CRITICAL: PROCESS INJECTION DETECTED                ║")
-			fmt.Println("╠═══════════════════════════════════════════════════════════╣")
-			fmt.Printf("║  Time:     %-46s║\n", ts)
-			fmt.Printf("║  Attacker: %-15s (PID: %-6d, UID: %-5d)   ║\n",
+			fmt.Println("+=========================================================+")
+			fmt.Println("|  CRITICAL: PROCESS INJECTION DETECTED                    |")
+			fmt.Println("+---------------------------------------------------------+")
+			fmt.Printf("|  Time:     %-46s|\n", ts)
+			fmt.Printf("|  Attacker: %-15s (PID: %-6d, UID: %-5d)   |\n",
 				evt.CommString(), evt.AttackerPID, evt.AttackerUID)
-			fmt.Printf("║  Target:   PID %-6d                                    ║\n",
+			fmt.Printf("|  Target:   PID %-6d                                    |\n",
 				evt.TargetPID)
-			fmt.Printf("║  Action:   %-15s                               ║\n",
+			fmt.Printf("|  Action:   %-15s                               |\n",
 				evt.RequestName())
 			if cfg.ShouldEnforce() {
-				fmt.Println("║  Status:   BLOCKED BY LSM (syscall denied in-kernel)     ║")
+				fmt.Println("|  Status:   BLOCKED BY LSM (syscall denied in-kernel)     |")
 			}
-			fmt.Println("╚═══════════════════════════════════════════════════════════╝")
+			fmt.Println("+=========================================================+")
 
 			// AUTO-RESPONSE: dispatch kill order (unless dry-run or LSM enforcing)
 			if cfg.ShouldAutoKill() {
@@ -202,7 +202,7 @@ func StartInjectionDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Lo
 				fmt.Printf("[%s] [ZION] LSM blocked ptrace for PID %d (%s) -- no kill needed\n",
 					ts, evt.AttackerPID, evt.CommString())
 			} else {
-				fmt.Printf("[%s] [ZION] ⏸️  Dry-run: kill suppressed for PID %d (%s)\n",
+				fmt.Printf("[%s] [ZION] dry-run: kill suppressed for PID %d (%s)\n",
 					ts, evt.AttackerPID, evt.CommString())
 			}
 		}

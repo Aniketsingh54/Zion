@@ -90,20 +90,20 @@ func StartPrivilegeDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Lo
 			})
 
 			fmt.Println()
-			fmt.Println("╔═══════════════════════════════════════════════════════════╗")
-			fmt.Println("║  🔴 CRITICAL: PRIVILEGE ESCALATION DETECTED (T1068)      ║")
-			fmt.Println("╠═══════════════════════════════════════════════════════════╣")
-			fmt.Printf("║  Time:     %-46s║\n", ts)
-			fmt.Printf("║  Binary:   %-15s (PID: %-6d)                 ║\n",
+			fmt.Println("+=========================================================+")
+			fmt.Println("|  CRITICAL: PRIVILEGE ESCALATION DETECTED (T1068)         |")
+			fmt.Println("+---------------------------------------------------------+")
+			fmt.Printf("|  Time:     %-46s|\n", ts)
+			fmt.Printf("|  Binary:   %-15s (PID: %-6d)                 |\n",
 				comm, evt.PID)
-			fmt.Printf("║  UID:      %d → %d (ROOT)                                ║\n",
+			fmt.Printf("|  UID:      %d -> %d (ROOT)                                |\n",
 				evt.OldUID, evt.NewUID)
 			if cfg.ShouldEnforce() {
-				fmt.Println("║  Status:   BLOCKED BY LSM (setuid denied in-kernel)      ║")
+				fmt.Println("|  Status:   BLOCKED BY LSM (setuid denied in-kernel)      |")
 			} else {
-				fmt.Println("║  Status:   UNAUTHORIZED ELEVATION                        ║")
+				fmt.Println("|  Status:   UNAUTHORIZED ELEVATION                        |")
 			}
-			fmt.Println("╚═══════════════════════════════════════════════════════════╝")
+			fmt.Println("+=========================================================+")
 
 			// AUTO-RESPONSE: dispatch kill order (unless dry-run or LSM enforcing)
 			if cfg.ShouldAutoKill() {
@@ -131,7 +131,7 @@ func StartPrivilegeDetector(m *ebpf.Map, cfg *config.Merged, eventLog *logger.Lo
 				fmt.Printf("[%s] [ZION] LSM blocked setuid for PID %d (%s) -- no kill needed\n",
 					ts, evt.PID, comm)
 			} else {
-				fmt.Printf("[%s] [ZION] ⏸️  Dry-run: kill suppressed for PID %d (%s)\n",
+				fmt.Printf("[%s] [ZION] dry-run: kill suppressed for PID %d (%s)\n",
 					ts, evt.PID, comm)
 			}
 		}
